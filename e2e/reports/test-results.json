@@ -1,0 +1,547 @@
+{
+  "config": {
+    "configFile": "/Users/hom/code/side-project/temp/交友/frontend/playwright.config.ts",
+    "rootDir": "/Users/hom/code/side-project/temp/交友/frontend/e2e",
+    "forbidOnly": false,
+    "fullyParallel": true,
+    "globalSetup": "/Users/hom/code/side-project/temp/交友/frontend/e2e/utils/global-setup.ts",
+    "globalTeardown": "/Users/hom/code/side-project/temp/交友/frontend/e2e/utils/global-teardown.ts",
+    "globalTimeout": 0,
+    "grep": {},
+    "grepInvert": null,
+    "maxFailures": 0,
+    "metadata": {
+      "actualWorkers": 2
+    },
+    "preserveOutput": "always",
+    "reporter": [
+      [
+        "list",
+        null
+      ],
+      [
+        "json",
+        {
+          "outputFile": "./e2e/reports/test-results.json"
+        }
+      ],
+      [
+        "html",
+        {
+          "open": "never",
+          "outputFolder": "./e2e/reports/html-report"
+        }
+      ],
+      [
+        "junit",
+        {
+          "outputFile": "./e2e/reports/junit-results.xml"
+        }
+      ]
+    ],
+    "reportSlowTests": {
+      "max": 5,
+      "threshold": 300000
+    },
+    "quiet": false,
+    "projects": [
+      {
+        "outputDir": "/Users/hom/code/side-project/temp/交友/frontend/e2e/test-results",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {
+          "actualWorkers": 2
+        },
+        "id": "setup",
+        "name": "setup",
+        "testDir": "/Users/hom/code/side-project/temp/交友/frontend/e2e",
+        "testIgnore": [],
+        "testMatch": [
+          "/.*\\.setup\\.ts/"
+        ],
+        "timeout": 30000
+      },
+      {
+        "outputDir": "/Users/hom/code/side-project/temp/交友/frontend/e2e/test-results",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {
+          "actualWorkers": 2
+        },
+        "id": "cleanup",
+        "name": "cleanup",
+        "testDir": "/Users/hom/code/side-project/temp/交友/frontend/e2e",
+        "testIgnore": [],
+        "testMatch": [
+          "/.*\\.teardown\\.ts/"
+        ],
+        "timeout": 30000
+      },
+      {
+        "outputDir": "/Users/hom/code/side-project/temp/交友/frontend/e2e/test-results",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {
+          "actualWorkers": 2
+        },
+        "id": "chromium",
+        "name": "chromium",
+        "testDir": "/Users/hom/code/side-project/temp/交友/frontend/e2e",
+        "testIgnore": [],
+        "testMatch": [
+          "**/*.@(spec|test).?(c|m)[jt]s?(x)"
+        ],
+        "timeout": 30000
+      },
+      {
+        "outputDir": "/Users/hom/code/side-project/temp/交友/frontend/e2e/test-results",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {
+          "actualWorkers": 2
+        },
+        "id": "firefox",
+        "name": "firefox",
+        "testDir": "/Users/hom/code/side-project/temp/交友/frontend/e2e",
+        "testIgnore": [],
+        "testMatch": [
+          "**/*.@(spec|test).?(c|m)[jt]s?(x)"
+        ],
+        "timeout": 30000
+      },
+      {
+        "outputDir": "/Users/hom/code/side-project/temp/交友/frontend/e2e/test-results",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {
+          "actualWorkers": 2
+        },
+        "id": "webkit",
+        "name": "webkit",
+        "testDir": "/Users/hom/code/side-project/temp/交友/frontend/e2e",
+        "testIgnore": [],
+        "testMatch": [
+          "**/*.@(spec|test).?(c|m)[jt]s?(x)"
+        ],
+        "timeout": 30000
+      },
+      {
+        "outputDir": "/Users/hom/code/side-project/temp/交友/frontend/e2e/test-results",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {
+          "actualWorkers": 2
+        },
+        "id": "msedge",
+        "name": "msedge",
+        "testDir": "/Users/hom/code/side-project/temp/交友/frontend/e2e",
+        "testIgnore": [],
+        "testMatch": [
+          "**/*.@(spec|test).?(c|m)[jt]s?(x)"
+        ],
+        "timeout": 30000
+      },
+      {
+        "outputDir": "/Users/hom/code/side-project/temp/交友/frontend/e2e/test-results",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {
+          "actualWorkers": 2
+        },
+        "id": "Mobile Chrome",
+        "name": "Mobile Chrome",
+        "testDir": "/Users/hom/code/side-project/temp/交友/frontend/e2e",
+        "testIgnore": [],
+        "testMatch": [
+          "**/*.@(spec|test).?(c|m)[jt]s?(x)"
+        ],
+        "timeout": 30000
+      },
+      {
+        "outputDir": "/Users/hom/code/side-project/temp/交友/frontend/e2e/test-results",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {
+          "actualWorkers": 2
+        },
+        "id": "Mobile Safari",
+        "name": "Mobile Safari",
+        "testDir": "/Users/hom/code/side-project/temp/交友/frontend/e2e",
+        "testIgnore": [],
+        "testMatch": [
+          "**/*.@(spec|test).?(c|m)[jt]s?(x)"
+        ],
+        "timeout": 30000
+      },
+      {
+        "outputDir": "/Users/hom/code/side-project/temp/交友/frontend/e2e/test-results",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {
+          "actualWorkers": 2
+        },
+        "id": "unauthenticated",
+        "name": "unauthenticated",
+        "testDir": "/Users/hom/code/side-project/temp/交友/frontend/e2e",
+        "testIgnore": [],
+        "testMatch": [
+          "/.*\\.unauthenticated\\.spec\\.ts/"
+        ],
+        "timeout": 30000
+      }
+    ],
+    "shard": null,
+    "updateSnapshots": "missing",
+    "updateSourceMethod": "patch",
+    "version": "1.55.0",
+    "workers": 5,
+    "webServer": {
+      "command": "CI=1 npx expo start --web --port 8083",
+      "port": 8083,
+      "reuseExistingServer": true,
+      "timeout": 120000,
+      "stdout": "ignore",
+      "stderr": "pipe"
+    }
+  },
+  "suites": [
+    {
+      "title": "tests/cleanup.teardown.ts",
+      "file": "tests/cleanup.teardown.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [
+        {
+          "title": "cleanup test data",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "cleanup",
+              "projectName": "cleanup",
+              "results": [
+                {
+                  "workerIndex": 3,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 10,
+                  "errors": [],
+                  "stdout": [
+                    {
+                      "text": "🧹 Starting test cleanup...\n"
+                    },
+                    {
+                      "text": "🔐 Authentication file preserved for debugging\n"
+                    },
+                    {
+                      "text": "Cleaning all test data...\n"
+                    },
+                    {
+                      "text": "🧽 Temporary files cleanup completed\n"
+                    },
+                    {
+                      "text": "📊 Old reports cleanup completed\n"
+                    },
+                    {
+                      "text": "✅ Test cleanup completed successfully\n"
+                    }
+                  ],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2025-09-10T08:45:41.060Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "076d242d30656dea47fb-15b4f47bb636d4244039",
+          "file": "tests/cleanup.teardown.ts",
+          "line": 11,
+          "column": 9
+        }
+      ]
+    },
+    {
+      "title": "tests/auth.setup.ts",
+      "file": "tests/auth.setup.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [
+        {
+          "title": "authenticate user",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "setup",
+              "projectName": "setup",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 2463,
+                  "errors": [],
+                  "stdout": [
+                    {
+                      "text": "🔐 Setting up authentication for tests...\n"
+                    },
+                    {
+                      "text": "📄 Login page loaded\n"
+                    },
+                    {
+                      "text": "👤 Login attempt completed\n"
+                    },
+                    {
+                      "text": "⚠️  Login may not have succeeded, but continuing...\n"
+                    },
+                    {
+                      "text": "💾 Mock authentication state saved\n"
+                    },
+                    {
+                      "text": "🎉 Authentication setup completed\n"
+                    }
+                  ],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2025-09-10T08:40:23.845Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "5cfdf7d9fac68b9178d2-b97f5017b10ceed20d59",
+          "file": "tests/auth.setup.ts",
+          "line": 14,
+          "column": 6
+        }
+      ]
+    },
+    {
+      "title": "redirect-loop-diagnosis.spec.ts",
+      "file": "redirect-loop-diagnosis.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "無限重定向循環診斷",
+          "file": "redirect-loop-diagnosis.spec.ts",
+          "line": 8,
+          "column": 6,
+          "specs": [
+            {
+              "title": "分析根頁面重定向行為",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "msedge",
+                  "projectName": "msedge",
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 8395,
+                      "errors": [],
+                      "stdout": [
+                        {
+                          "text": "🔍 開始診斷無限重定向問題...\n"
+                        },
+                        {
+                          "text": "🌐 訪問根頁面: http://localhost:8083\n"
+                        },
+                        {
+                          "text": "📝 Console: %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold\n"
+                        },
+                        {
+                          "text": "📝 Console: Running application \"main\" with appParams:\n {rootTag: #root, hydrate: undefined} \nDevelopment-level warnings: ON.\nPerformance optimizations: OFF.\n"
+                        },
+                        {
+                          "text": "📝 Console: \"shadow*\" style props are deprecated. Use \"boxShadow\".\n"
+                        },
+                        {
+                          "text": "📝 Console: State loaded from storage couldn't be migrated since no migrate function was provided\n"
+                        },
+                        {
+                          "text": "📝 Console: Auth rehydration completed {user: null, token: null, isAuthenticated: false, isLoading: false, error: null}\n"
+                        },
+                        {
+                          "text": "📝 Console: props.pointerEvents is deprecated. Use style.pointerEvents\n"
+                        },
+                        {
+                          "text": "📝 Console: 🛡️ ProtectedRoute check: {isAuthenticated: false, isLoading: false, segments: Array(0), isInProtectedRoute: false, isInAuthRoute: false}\n"
+                        },
+                        {
+                          "text": "📝 Console: 🏠 Index navigation decision: {isAuthenticated: false, isLoading: false, user: none}\n"
+                        },
+                        {
+                          "text": "📝 Console: 🔐 Redirecting unauthenticated user to login\n"
+                        },
+                        {
+                          "text": "📝 Console: 🔄 Auth state changed: {isAuthenticated: false}\n"
+                        },
+                        {
+                          "text": "📝 Console: 🛡️ ProtectedRoute check: {isAuthenticated: false, isLoading: false, segments: Array(1), isInProtectedRoute: false, isInAuthRoute: true}\n"
+                        },
+                        {
+                          "text": "📝 Console: [DOM] Password field is not contained in a form: (More info: https://www.chromium.org/developers/design-documents/create-amazing-password-forms) %o\n"
+                        },
+                        {
+                          "text": "📍 當前 URL: http://localhost:8083/login\n"
+                        },
+                        {
+                          "text": "📄 頁面內容: Welcome BackSign in to continueLoginDon't have an account? Register\n...\n"
+                        },
+                        {
+                          "text": "🔄 是否顯示重定向訊息: false\n"
+                        },
+                        {
+                          "text": "⏳ 是否顯示載入指示器: false\n"
+                        },
+                        {
+                          "text": "🧭 導航相關訊息:\n"
+                        },
+                        {
+                          "text": "  - 🛡️ ProtectedRoute check: {isAuthenticated: false, isLoading: false, segments: Array(0), isInProtectedRoute: false, isInAuthRoute: false}\n"
+                        },
+                        {
+                          "text": "  - 🏠 Index navigation decision: {isAuthenticated: false, isLoading: false, user: none}\n"
+                        },
+                        {
+                          "text": "  - 🔐 Redirecting unauthenticated user to login\n"
+                        },
+                        {
+                          "text": "  - 🛡️ ProtectedRoute check: {isAuthenticated: false, isLoading: false, segments: Array(1), isInProtectedRoute: false, isInAuthRoute: true}\n"
+                        },
+                        {
+                          "text": "🎯 最終 URL: http://localhost:8083/login\n"
+                        },
+                        {
+                          "text": "🔐 是否在登入頁面: true\n"
+                        },
+                        {
+                          "text": "📝 是否有登入表單: true\n"
+                        }
+                      ],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2025-09-10T08:40:27.723Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "2cb021d44e8033990588-82c05c71f2381228ef8e",
+              "file": "redirect-loop-diagnosis.spec.ts",
+              "line": 9,
+              "column": 7
+            },
+            {
+              "title": "測試直接訪問登入頁面",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "msedge",
+                  "projectName": "msedge",
+                  "results": [
+                    {
+                      "workerIndex": 2,
+                      "parallelIndex": 1,
+                      "status": "passed",
+                      "duration": 5034,
+                      "errors": [],
+                      "stdout": [
+                        {
+                          "text": "🔍 測試直接訪問登入頁面...\n"
+                        },
+                        {
+                          "text": "🌐 直接訪問: http://localhost:8083/login\n"
+                        },
+                        {
+                          "text": "📝 Console: %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold\n"
+                        },
+                        {
+                          "text": "📝 Console: Running application \"main\" with appParams:\n {rootTag: #root, hydrate: undefined} \nDevelopment-level warnings: ON.\nPerformance optimizations: OFF.\n"
+                        },
+                        {
+                          "text": "📝 Console: \"shadow*\" style props are deprecated. Use \"boxShadow\".\n"
+                        },
+                        {
+                          "text": "📝 Console: State loaded from storage couldn't be migrated since no migrate function was provided\n"
+                        },
+                        {
+                          "text": "📝 Console: Auth rehydration completed {user: null, token: null, isAuthenticated: false, isLoading: false, error: null}\n"
+                        },
+                        {
+                          "text": "📝 Console: 🔄 Auth state changed: {isAuthenticated: false}\n"
+                        },
+                        {
+                          "text": "📝 Console: 🛡️ ProtectedRoute check: {isAuthenticated: false, isLoading: false, segments: Array(1), isInProtectedRoute: false, isInAuthRoute: true}\n"
+                        },
+                        {
+                          "text": "📝 Console: [DOM] Password field is not contained in a form: (More info: https://www.chromium.org/developers/design-documents/create-amazing-password-forms) %o\n"
+                        },
+                        {
+                          "text": "📍 當前 URL: http://localhost:8083/login\n"
+                        },
+                        {
+                          "text": "🔒 是否停留在登入頁面: true\n"
+                        },
+                        {
+                          "text": "🔄 是否顯示重定向訊息: false\n"
+                        },
+                        {
+                          "text": "📝 是否有登入表單: true\n"
+                        }
+                      ],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2025-09-10T08:40:27.723Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "2cb021d44e8033990588-85745fcce191f0df2655",
+              "file": "redirect-loop-diagnosis.spec.ts",
+              "line": 80,
+              "column": 7
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "errors": [],
+  "stats": {
+    "startTime": "2025-09-10T08:40:20.240Z",
+    "duration": 320886.044,
+    "expected": 4,
+    "skipped": 0,
+    "unexpected": 0,
+    "flaky": 0
+  }
+}

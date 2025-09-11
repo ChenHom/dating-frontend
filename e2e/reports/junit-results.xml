@@ -1,0 +1,87 @@
+<testsuites id="" name="" tests="4" failures="0" skipped="0" errors="0" time="320.88604399999997">
+<testsuite name="tests/cleanup.teardown.ts" timestamp="2025-09-10T08:40:23.487Z" hostname="cleanup" tests="1" failures="0" skipped="0" time="0.01" errors="0">
+<testcase name="cleanup test data" classname="tests/cleanup.teardown.ts" time="0.01">
+<system-out>
+<![CDATA[🧹 Starting test cleanup...
+🔐 Authentication file preserved for debugging
+Cleaning all test data...
+🧽 Temporary files cleanup completed
+📊 Old reports cleanup completed
+✅ Test cleanup completed successfully
+]]>
+</system-out>
+</testcase>
+</testsuite>
+<testsuite name="tests/auth.setup.ts" timestamp="2025-09-10T08:40:23.487Z" hostname="setup" tests="1" failures="0" skipped="0" time="2.463" errors="0">
+<testcase name="authenticate user" classname="tests/auth.setup.ts" time="2.463">
+<system-out>
+<![CDATA[🔐 Setting up authentication for tests...
+📄 Login page loaded
+👤 Login attempt completed
+⚠️  Login may not have succeeded, but continuing...
+💾 Mock authentication state saved
+🎉 Authentication setup completed
+]]>
+</system-out>
+</testcase>
+</testsuite>
+<testsuite name="redirect-loop-diagnosis.spec.ts" timestamp="2025-09-10T08:40:23.487Z" hostname="msedge" tests="2" failures="0" skipped="0" time="13.429" errors="0">
+<testcase name="無限重定向循環診斷 › 分析根頁面重定向行為" classname="redirect-loop-diagnosis.spec.ts" time="8.395">
+<system-out>
+<![CDATA[🔍 開始診斷無限重定向問題...
+🌐 訪問根頁面: http://localhost:8083
+📝 Console: %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold
+📝 Console: Running application "main" with appParams:
+ {rootTag: #root, hydrate: undefined} 
+Development-level warnings: ON.
+Performance optimizations: OFF.
+📝 Console: "shadow*" style props are deprecated. Use "boxShadow".
+📝 Console: State loaded from storage couldn't be migrated since no migrate function was provided
+📝 Console: Auth rehydration completed {user: null, token: null, isAuthenticated: false, isLoading: false, error: null}
+📝 Console: props.pointerEvents is deprecated. Use style.pointerEvents
+📝 Console: 🛡️ ProtectedRoute check: {isAuthenticated: false, isLoading: false, segments: Array(0), isInProtectedRoute: false, isInAuthRoute: false}
+📝 Console: 🏠 Index navigation decision: {isAuthenticated: false, isLoading: false, user: none}
+📝 Console: 🔐 Redirecting unauthenticated user to login
+📝 Console: 🔄 Auth state changed: {isAuthenticated: false}
+📝 Console: 🛡️ ProtectedRoute check: {isAuthenticated: false, isLoading: false, segments: Array(1), isInProtectedRoute: false, isInAuthRoute: true}
+📝 Console: [DOM] Password field is not contained in a form: (More info: https://www.chromium.org/developers/design-documents/create-amazing-password-forms) %o
+📍 當前 URL: http://localhost:8083/login
+📄 頁面內容: Welcome BackSign in to continueLoginDon't have an account? Register
+...
+🔄 是否顯示重定向訊息: false
+⏳ 是否顯示載入指示器: false
+🧭 導航相關訊息:
+  - 🛡️ ProtectedRoute check: {isAuthenticated: false, isLoading: false, segments: Array(0), isInProtectedRoute: false, isInAuthRoute: false}
+  - 🏠 Index navigation decision: {isAuthenticated: false, isLoading: false, user: none}
+  - 🔐 Redirecting unauthenticated user to login
+  - 🛡️ ProtectedRoute check: {isAuthenticated: false, isLoading: false, segments: Array(1), isInProtectedRoute: false, isInAuthRoute: true}
+🎯 最終 URL: http://localhost:8083/login
+🔐 是否在登入頁面: true
+📝 是否有登入表單: true
+]]>
+</system-out>
+</testcase>
+<testcase name="無限重定向循環診斷 › 測試直接訪問登入頁面" classname="redirect-loop-diagnosis.spec.ts" time="5.034">
+<system-out>
+<![CDATA[🔍 測試直接訪問登入頁面...
+🌐 直接訪問: http://localhost:8083/login
+📝 Console: %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold
+📝 Console: Running application "main" with appParams:
+ {rootTag: #root, hydrate: undefined} 
+Development-level warnings: ON.
+Performance optimizations: OFF.
+📝 Console: "shadow*" style props are deprecated. Use "boxShadow".
+📝 Console: State loaded from storage couldn't be migrated since no migrate function was provided
+📝 Console: Auth rehydration completed {user: null, token: null, isAuthenticated: false, isLoading: false, error: null}
+📝 Console: 🔄 Auth state changed: {isAuthenticated: false}
+📝 Console: 🛡️ ProtectedRoute check: {isAuthenticated: false, isLoading: false, segments: Array(1), isInProtectedRoute: false, isInAuthRoute: true}
+📝 Console: [DOM] Password field is not contained in a form: (More info: https://www.chromium.org/developers/design-documents/create-amazing-password-forms) %o
+📍 當前 URL: http://localhost:8083/login
+🔒 是否停留在登入頁面: true
+🔄 是否顯示重定向訊息: false
+📝 是否有登入表單: true
+]]>
+</system-out>
+</testcase>
+</testsuite>
+</testsuites>
