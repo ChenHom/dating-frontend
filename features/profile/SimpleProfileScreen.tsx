@@ -12,11 +12,20 @@ import {
   Image,
   TouchableOpacity,
 } from 'react-native';
+import { router } from 'expo-router';
 import { useAuthStore } from '../../stores/auth';
 import { LogoutButton } from '../../components/auth/LogoutButton';
 
 export const SimpleProfileScreen: React.FC = () => {
   const { user } = useAuthStore();
+
+  const handleEditProfile = () => {
+    router.push('/profile/edit');
+  };
+
+  const handlePreferences = () => {
+    router.push('/settings');
+  };
 
   return (
     <ScrollView style={styles.container} testID="profile-container">
@@ -67,15 +76,23 @@ export const SimpleProfileScreen: React.FC = () => {
 
         {/* Profile Options */}
         <View style={styles.optionsContainer} testID="profile-options">
-          <TouchableOpacity style={styles.optionItem} testID="edit-profile-option">
+          <TouchableOpacity 
+            style={styles.optionItem} 
+            testID="edit-profile-option"
+            onPress={handleEditProfile}
+          >
             <Text style={styles.optionIcon}>👤</Text>
             <Text style={styles.optionText}>Edit Profile</Text>
             <Text style={styles.optionArrow}>›</Text>
           </TouchableOpacity>
 
-          <TouchableOpacity style={styles.optionItem} testID="preferences-option">
+          <TouchableOpacity 
+            style={styles.optionItem} 
+            testID="preferences-option"
+            onPress={handlePreferences}
+          >
             <Text style={styles.optionIcon}>⚙️</Text>
-            <Text style={styles.optionText}>Preferences</Text>
+            <Text style={styles.optionText}>Settings</Text>
             <Text style={styles.optionArrow}>›</Text>
           </TouchableOpacity>
 

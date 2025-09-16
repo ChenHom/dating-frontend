@@ -39,7 +39,7 @@ export const RegisterScreen: React.FC = () => {
   // Navigate to main app when authenticated
   useEffect(() => {
     if (isAuthenticated) {
-      router.push('/(tabs)/feed');
+      router.push('/(tabs)/discover');
     }
   }, [isAuthenticated]);
 

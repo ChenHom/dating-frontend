@@ -1,9 +1,9 @@
 /**
  * SwipeCard Component
- * 滑動式配對組件 - 支援多張照片與基本資訊顯示
+ * 滑動式配對組件 - 支援多張照片與基本資訊顯示，優化版本
  */
 
-import React, { useState, useRef, forwardRef, useImperativeHandle } from 'react';
+import React, { useState, useRef, forwardRef, useImperativeHandle, useEffect } from 'react';
 import {
   View,
   Text,
@@ -11,10 +11,12 @@ import {
   Dimensions,
   TouchableOpacity,
   ActivityIndicator,
+  Animated,
 } from 'react-native';
-import { Image } from 'expo-image';
+import { Ionicons } from '@expo/vector-icons';
 import Swiper from 'react-native-deck-swiper';
 import { FeedUser } from '@/lib/types';
+import { ProfileImage } from '@/components/ui/ImageWithFallback';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -35,11 +37,45 @@ export const SwipeCard = forwardRef<SwipeCardRef, SwipeCardProps>(
   ({ users, onLike, onPass, onAllSwiped, loading = false }, ref) => {
     const swiperRef = useRef<Swiper<FeedUser>>(null);
     const [photoIndices, setPhotoIndices] = useState<{ [key: number]: number }>({});
+    const [preloadedImages, setPreloadedImages] = useState<Set<string>>(new Set());
+    const fadeAnim = useRef(new Animated.Value(1)).current;
 
     useImperativeHandle(ref, () => ({
       swipeLeft: () => swiperRef.current?.swipeLeft(),
       swipeRight: () => swiperRef.current?.swipeRight(),
     }));
+
+    // Preload images for next few users
+    useEffect(() => {
+      const preloadNextImages = async () => {
+        const imagesToPreload: string[] = [];
+
+        // Preload images for first 3 users
+        users.slice(0, 3).forEach(user => {
+          if (user.photos) {
+            user.photos.forEach(photo => {
+              if (photo.url && !preloadedImages.has(photo.url)) {
+                imagesToPreload.push(photo.url);
+              }
+            });
+          } else if (user.profile.primary_photo_url && !preloadedImages.has(user.profile.primary_photo_url)) {
+            imagesToPreload.push(user.profile.primary_photo_url);
+          }
+        });
+
+        // Preload images (using expo-image's built-in preloading)
+        imagesToPreload.forEach(uri => {
+          // This will cache the image for later use
+          ProfileImage.preload([{ uri }]);
+        });
+
+        setPreloadedImages(new Set([...preloadedImages, ...imagesToPreload]));
+      };
+
+      if (users.length > 0) {
+        preloadNextImages();
+      }
+    }, [users]);
 
     const handleSwipedLeft = (cardIndex: number) => {
       const user = users[cardIndex];
@@ -71,7 +107,29 @@ export const SwipeCard = forwardRef<SwipeCardRef, SwipeCardProps>(
         newIndex = currentIndex < user.photos.length - 1 ? currentIndex + 1 : 0;
       }
 
+      // Animate photo change
+      Animated.sequence([
+        Animated.timing(fadeAnim, {
+          toValue: 0.7,
+          duration: 100,
+          useNativeDriver: true,
+        }),
+        Animated.timing(fadeAnim, {
+          toValue: 1,
+          duration: 100,
+          useNativeDriver: true,
+        }),
+      ]).start();
+
       setPhotoIndices(prev => ({ ...prev, [user.id]: newIndex }));
+    };
+
+    const getPhotoCount = (user: FeedUser): number => {
+      return user.photos?.length || (user.profile.primary_photo_url ? 1 : 0);
+    };
+
+    const hasMultiplePhotos = (user: FeedUser): boolean => {
+      return getPhotoCount(user) > 1;
     };
 
     const renderCard = (user: FeedUser, index: number) => {
@@ -82,51 +140,75 @@ export const SwipeCard = forwardRef<SwipeCardRef, SwipeCardProps>(
       const currentPhotoIndex = getCurrentPhotoIndex(user.id);
       const currentPhoto = user.photos?.[currentPhotoIndex];
       const photoUrl = currentPhoto?.url || user.profile.primary_photo_url;
+      const photoCount = getPhotoCount(user);
 
       return (
         <View style={styles.card}>
           {/* Photo Section */}
           <View style={styles.photoContainer}>
-            {photoUrl ? (
-              <>
-                <Image
+            <Animated.View style={[styles.photoWrapper, { opacity: fadeAnim }]}>
+              {photoUrl ? (
+                <ProfileImage
                   testID="user-photo"
                   source={{ uri: photoUrl }}
                   style={styles.photo}
-                  contentFit="cover"
-                  transition={200}
+                  retryable={true}
+                  maxRetries={2}
+                  placeholder="👤"
                 />
+              ) : (
+                <View style={styles.defaultPhoto} testID="default-photo">
+                  <Ionicons name="person" size={48} color="#ccc" />
+                  <Text style={styles.defaultPhotoText}>無照片</Text>
+                </View>
+              )}
+            </Animated.View>
 
-                {/* Photo Navigation Areas */}
+            {/* Photo Navigation Areas - Only show if multiple photos */}
+            {hasMultiplePhotos(user) && (
+              <>
                 <TouchableOpacity
                   style={styles.photoNavLeft}
                   onPress={() => handlePhotoTap(user, 'left')}
                   activeOpacity={1}
-                />
+                >
+                  <View style={styles.navIndicator}>
+                    <Ionicons name="chevron-back" size={20} color="rgba(255,255,255,0.8)" />
+                  </View>
+                </TouchableOpacity>
                 <TouchableOpacity
                   style={styles.photoNavRight}
                   onPress={() => handlePhotoTap(user, 'right')}
                   activeOpacity={1}
-                />
-
-                {/* Photo Indicators */}
-                {user.photos && user.photos.length > 1 && (
-                  <View style={styles.indicatorContainer} testID="photo-indicators">
-                    {user.photos.map((_, photoIndex) => (
-                      <View
-                        key={photoIndex}
-                        style={[
-                          styles.indicator,
-                          photoIndex === currentPhotoIndex && styles.activeIndicator,
-                        ]}
-                      />
-                    ))}
+                >
+                  <View style={styles.navIndicator}>
+                    <Ionicons name="chevron-forward" size={20} color="rgba(255,255,255,0.8)" />
                   </View>
-                )}
+                </TouchableOpacity>
               </>
-            ) : (
-              <View style={styles.defaultPhoto} testID="default-photo">
-                <Text style={styles.defaultPhotoText}>無照片</Text>
+            )}
+
+            {/* Enhanced Photo Indicators */}
+            {hasMultiplePhotos(user) && user.photos && (
+              <View style={styles.indicatorContainer} testID="photo-indicators">
+                {user.photos.map((_, photoIndex) => (
+                  <TouchableOpacity
+                    key={photoIndex}
+                    style={[
+                      styles.indicator,
+                      photoIndex === currentPhotoIndex && styles.activeIndicator,
+                    ]}
+                    onPress={() => {
+                      setPhotoIndices(prev => ({ ...prev, [user.id]: photoIndex }));
+                    }}
+                  />
+                ))}
+                {/* Photo counter */}
+                <View style={styles.photoCounter}>
+                  <Text style={styles.photoCounterText}>
+                    {currentPhotoIndex + 1}/{user.photos.length}
+                  </Text>
+                </View>
               </View>
             )}
           </View>
@@ -280,10 +362,21 @@ const styles = StyleSheet.create({
     minHeight: 250, // 確保照片區域有最小高度
     maxHeight: '75%', // 限制照片區域最大高度，為資訊區域留空間
   },
+  photoWrapper: {
+    width: '100%',
+    height: '100%',
+  },
   photo: {
     width: '100%',
     height: '100%',
     backgroundColor: '#F5F5F5',
+  },
+  navIndicator: {
+    position: 'absolute',
+    top: '50%',
+    left: '50%',
+    transform: [{ translateX: -10 }, { translateY: -10 }],
+    opacity: 0,
   },
   photoNavLeft: {
     position: 'absolute',
@@ -292,6 +385,8 @@ const styles = StyleSheet.create({
     width: '40%',
     height: '80%',
     zIndex: 10,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   photoNavRight: {
     position: 'absolute',
@@ -300,26 +395,42 @@ const styles = StyleSheet.create({
     width: '40%',
     height: '80%',
     zIndex: 10,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   indicatorContainer: {
     position: 'absolute',
-    top: 20,
-    left: 0,
-    right: 0,
+    top: 16,
+    left: 16,
+    right: 16,
     flexDirection: 'row',
-    justifyContent: 'center',
+    justifyContent: 'space-between',
     alignItems: 'center',
     zIndex: 5,
   },
   indicator: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: 'rgba(255, 255, 255, 0.5)',
-    marginHorizontal: 3,
+    flex: 1,
+    height: 3,
+    borderRadius: 1.5,
+    backgroundColor: 'rgba(255, 255, 255, 0.4)',
+    marginHorizontal: 1,
   },
   activeIndicator: {
     backgroundColor: 'rgba(255, 255, 255, 0.9)',
+  },
+  photoCounter: {
+    position: 'absolute',
+    right: 0,
+    top: -2,
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 12,
+  },
+  photoCounterText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '500',
   },
   defaultPhoto: {
     flex: 1,

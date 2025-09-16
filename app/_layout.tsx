@@ -34,6 +34,20 @@ export default function RootLayout() {
               headerShown: false,
             }}
           />
+          <Stack.Screen 
+            name="profile/edit" 
+            options={{ 
+              headerShown: false,
+              presentation: 'modal' 
+            }} 
+          />
+          <Stack.Screen 
+            name="settings" 
+            options={{ 
+              headerShown: false,
+              presentation: 'modal' 
+            }} 
+          />
           <Stack.Screen name="login" options={{ headerShown: false }} />
           <Stack.Screen name="register" options={{ headerShown: false }} />
           <Stack.Screen name="+not-found" />

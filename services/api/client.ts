@@ -91,8 +91,13 @@ class ApiClient {
   }
 
   async register(data: RegisterRequest): Promise<AuthResponse> {
-    const response = await this.client.post<ApiResponse<AuthResponse>>('/auth/register', data);
-    return response.data.data;
+    const response = await this.client.post('/auth/register', data);
+    // Backend returns: { message, user, token } - same as login
+    // Transform to expected AuthResponse format
+    return {
+      user: response.data.user,
+      token: response.data.token,
+    };
   }
 
   async logout(): Promise<void> {

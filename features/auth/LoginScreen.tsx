@@ -33,8 +33,8 @@ export const LoginScreen: React.FC = () => {
   useEffect(() => {
     console.log('🔄 Auth state changed:', { isAuthenticated });
     if (isAuthenticated) {
-      console.log('🚀 Navigating to feed page...');
-      router.push('/(tabs)/feed');
+      console.log('🚀 Navigating to discover page...');
+      router.push('/(tabs)/discover');
     }
   }, [isAuthenticated]);
 

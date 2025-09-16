@@ -35,7 +35,8 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
   useEffect(() => {
     // 只有在導航系統準備就緒且認證檢查完成後才執行導航
     if (!isLoading && isNavigationReady) {
-      const isInProtectedRoute = segments[0] === '(tabs)' || segments[0] === 'chat';
+      const isInProtectedRoute = segments[0] === '(tabs)' || segments[0] === 'chat' || 
+                                  segments[0] === 'profile' || segments[0] === 'settings';
       const isInAuthRoute = segments[0] === 'login' || segments[0] === 'register';
       
       console.log('🛡️ ProtectedRoute check:', {
@@ -81,7 +82,8 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
 
   // If not authenticated, only show redirect for protected routes
   if (!isAuthenticated) {
-    const isInProtectedRoute = segments[0] === '(tabs)' || segments[0] === 'chat';
+    const isInProtectedRoute = segments[0] === '(tabs)' || segments[0] === 'chat' || 
+                               segments[0] === 'profile' || segments[0] === 'settings';
     const isInAuthRoute = segments[0] === 'login' || segments[0] === 'register';
     
     // 如果在認證頁面（登入/註冊），直接渲染子組件

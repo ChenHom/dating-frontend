@@ -187,11 +187,167 @@ export const getImageInfo = (base64: string) => {
   const fileSize = Math.round((base64.length * 3) / 4);
   const fileSizeKB = Math.round(fileSize / 1024);
   const fileSizeMB = Math.round(fileSizeKB / 1024 * 100) / 100;
-  
+
   return {
     fileSize,
     fileSizeKB,
     fileSizeMB,
     fileSizeText: fileSizeMB > 1 ? `${fileSizeMB}MB` : `${fileSizeKB}KB`,
   };
+};
+
+/**
+ * Pick multiple images from gallery
+ */
+export const pickMultipleImagesFromGallery = async (
+  maxSelection: number = 6
+): Promise<ProcessedImage[]> => {
+  const hasPermission = await requestMediaLibraryPermission();
+  if (!hasPermission) {
+    throw new Error('需要相片權限才能選擇圖片');
+  }
+
+  const result = await ImagePicker.launchImageLibraryAsync({
+    mediaTypes: ImagePicker.MediaTypeOptions.Images,
+    allowsMultipleSelection: true,
+    selectionLimit: maxSelection,
+    allowsEditing: false,
+    quality: 1,
+    base64: false,
+  });
+
+  if (result.canceled) {
+    return [];
+  }
+
+  // Process all selected images
+  const processedImages = await Promise.all(
+    result.assets.map(asset => processImage(asset))
+  );
+
+  return processedImages;
+};
+
+/**
+ * Show image source selection action sheet
+ */
+export interface ImageSourceOption {
+  title: string;
+  action: () => Promise<ProcessedImage | ProcessedImage[] | null>;
+}
+
+export const getImageSourceOptions = (allowMultiple = false): ImageSourceOption[] => {
+  const options: ImageSourceOption[] = [
+    {
+      title: '拍照',
+      action: pickImageFromCamera,
+    },
+  ];
+
+  if (allowMultiple) {
+    options.push({
+      title: '從相簿選擇多張',
+      action: () => pickMultipleImagesFromGallery(6),
+    });
+  } else {
+    options.push({
+      title: '從相簿選擇',
+      action: pickImageFromGallery,
+    });
+  }
+
+  return options;
+};
+
+/**
+ * Generate thumbnail from processed image
+ */
+export const generateThumbnail = async (
+  imageUri: string,
+  size: number = 200
+): Promise<ProcessedImage> => {
+  try {
+    const manipulatedImage = await manipulateAsync(
+      imageUri,
+      [{ resize: { width: size, height: size } }],
+      {
+        compress: 0.7,
+        format: SaveFormat.JPEG,
+        base64: true,
+      }
+    );
+
+    if (!manipulatedImage.base64) {
+      throw new Error('縮圖生成失敗');
+    }
+
+    const fileSize = Math.round((manipulatedImage.base64.length * 3) / 4);
+
+    return {
+      base64: manipulatedImage.base64,
+      uri: manipulatedImage.uri,
+      width: manipulatedImage.width || size,
+      height: manipulatedImage.height || size,
+      fileSize,
+    };
+  } catch (error) {
+    throw new Error(
+      error instanceof Error ? error.message : '縮圖生成時發生未知錯誤'
+    );
+  }
+};
+
+/**
+ * Check if image needs compression
+ */
+export const needsCompression = (asset: ImagePicker.ImagePickerAsset): boolean => {
+  return (
+    asset.width > IMAGE_CONFIG.MAX_WIDTH ||
+    asset.height > IMAGE_CONFIG.MAX_HEIGHT ||
+    (asset.fileSize && asset.fileSize > IMAGE_CONFIG.MAX_FILE_SIZE)
+  );
+};
+
+/**
+ * Estimate processing time based on image size
+ */
+export const estimateProcessingTime = (asset: ImagePicker.ImagePickerAsset): number => {
+  const pixelCount = asset.width * asset.height;
+  const basetime = 1000; // 1 second for small images
+
+  if (pixelCount > 4000000) { // > 4MP
+    return basetime * 3;
+  } else if (pixelCount > 2000000) { // > 2MP
+    return basetime * 2;
+  }
+
+  return basetime;
+};
+
+/**
+ * Image processing error types
+ */
+export enum ImageProcessingError {
+  PERMISSION_DENIED = 'PERMISSION_DENIED',
+  FILE_TOO_LARGE = 'FILE_TOO_LARGE',
+  INVALID_FORMAT = 'INVALID_FORMAT',
+  PROCESSING_FAILED = 'PROCESSING_FAILED',
+  CANCELLED = 'CANCELLED',
+}
+
+export const getImageProcessingErrorMessage = (error: ImageProcessingError): string => {
+  switch (error) {
+    case ImageProcessingError.PERMISSION_DENIED:
+      return '需要相機或相片權限才能繼續';
+    case ImageProcessingError.FILE_TOO_LARGE:
+      return '圖片檔案太大，請選擇較小的圖片';
+    case ImageProcessingError.INVALID_FORMAT:
+      return '不支援的圖片格式，請選擇 JPEG、PNG 或 WEBP 格式';
+    case ImageProcessingError.PROCESSING_FAILED:
+      return '圖片處理失敗，請重試';
+    case ImageProcessingError.CANCELLED:
+      return '操作已取消';
+    default:
+      return '圖片處理時發生未知錯誤';
+  }
 };
