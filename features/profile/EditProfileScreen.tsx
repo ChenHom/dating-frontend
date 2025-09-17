@@ -19,6 +19,7 @@ import {
 import { router } from 'expo-router';
 import { useAuthStore } from '@/stores/auth';
 import { useProfileStore } from '@/stores/profile';
+import { PhotoManager } from '@/components/photo/PhotoManager';
 
 interface FormData {
   display_name: string;
@@ -214,11 +215,16 @@ export const EditProfileScreen: React.FC = () => {
           </TouchableOpacity>
         </View>
 
-        <ScrollView 
-          style={{ flex: 1 }} 
+        <ScrollView
+          style={{ flex: 1 }}
           contentContainerStyle={{ flexGrow: 1 }}
           keyboardShouldPersistTaps="handled"
         >
+          {/* Photo Management Section */}
+          <View style={{ marginBottom: 20 }}>
+            <PhotoManager style={{ backgroundColor: '#ffffff' }} />
+          </View>
+
           <View style={{ padding: 20 }}>
             {/* Display Name */}
             <View style={{ marginBottom: 24 }}>

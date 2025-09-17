@@ -5,7 +5,8 @@
 
 import { create } from 'zustand';
 import { WebSocketManager } from '../services/websocket/WebSocketManager';
-import { WebSocketConnectionState } from '../services/websocket/types';
+import { EchoService, echoService } from '../services/websocket/EchoService';
+import { WebSocketConnectionState, MessageNewEvent } from '../services/websocket/types';
 
 export interface Message {
   id: number;
@@ -56,6 +57,7 @@ interface ChatState {
   // Connection state
   connectionState: WebSocketConnectionState;
   wsManager: WebSocketManager | null;
+  echoService: EchoService;
   
   // Conversations
   conversations: Conversation[];
@@ -75,8 +77,11 @@ interface ChatState {
   totalUnreadCount: number;
   
   // Actions
+  initializeEcho: (authToken: string) => Promise<void>;
   connect: (wsUrl: string, authToken: string) => void;
   disconnect: () => void;
+  subscribeToConversation: (conversationId: number) => void;
+  unsubscribeFromConversation: (conversationId: number) => void;
   loadConversations: () => Promise<void>;
   loadMessages: (conversationId: number, page?: number) => Promise<void>;
   setCurrentConversation: (conversationId: number | null) => void;
@@ -86,6 +91,7 @@ interface ChatState {
   
   // Internal methods
   handleWebSocketMessage: (event: any) => void;
+  handleGameEvent: (eventType: string, event: any) => void;
   handleConnectionStateChange: (newState: WebSocketConnectionState) => void;
   updatePendingMessageStatus: (clientNonce: string, status: PendingMessage['status'], error?: string) => void;
   addPendingMessage: (message: PendingMessage) => void;
@@ -98,6 +104,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   // Initial state
   connectionState: WebSocketConnectionState.DISCONNECTED,
   wsManager: null,
+  echoService: echoService,
   conversations: [],
   currentConversationId: null,
   isLoadingConversations: false,
@@ -107,6 +114,69 @@ export const useChatStore = create<ChatState>((set, get) => ({
   messagesError: {},
   pendingMessages: {},
   totalUnreadCount: 0,
+
+  // Echo service initialization
+  initializeEcho: async (authToken: string) => {
+    try {
+      const { echoService } = get();
+
+      // Setup Echo event listeners
+      echoService.on('connected', () => {
+        set({ connectionState: WebSocketConnectionState.CONNECTED });
+      });
+
+      echoService.on('disconnected', () => {
+        set({ connectionState: WebSocketConnectionState.DISCONNECTED });
+      });
+
+      echoService.on('error', (error) => {
+        console.error('Echo connection error:', error);
+        set({ connectionState: WebSocketConnectionState.ERROR });
+      });
+
+      echoService.on('message.new', (event: MessageNewEvent) => {
+        get().handleWebSocketMessage(event);
+      });
+
+      // Setup game event listeners
+      echoService.on('game.started', (event) => {
+        get().handleGameEvent('game.started', event);
+      });
+
+      echoService.on('game.move', (event) => {
+        get().handleGameEvent('game.move', event);
+      });
+
+      echoService.on('game.ended', (event) => {
+        get().handleGameEvent('game.ended', event);
+      });
+
+      echoService.on('game.timeout', (event) => {
+        get().handleGameEvent('game.timeout', event);
+      });
+
+      echoService.on('connection_state_changed', (newState) => {
+        get().handleConnectionStateChange(newState);
+      });
+
+      await echoService.initialize(authToken);
+
+    } catch (error) {
+      console.error('Failed to initialize Echo service:', error);
+      set({ connectionState: WebSocketConnectionState.ERROR });
+      throw error;
+    }
+  },
+
+  subscribeToConversation: (conversationId: number) => {
+    const { echoService } = get();
+    echoService.subscribeToConversation(conversationId);
+  },
+
+  unsubscribeFromConversation: (conversationId: number) => {
+    const { echoService } = get();
+    echoService.unsubscribeFromConversation(conversationId);
+  },
 
   // Connection management
   connect: (wsUrl: string, authToken: string) => {
@@ -139,14 +209,17 @@ export const useChatStore = create<ChatState>((set, get) => ({
   },
 
   disconnect: () => {
-    const { wsManager } = get();
+    const { wsManager, echoService } = get();
+
     if (wsManager) {
       wsManager.disconnect();
-      set({ 
+      set({
         wsManager: null,
-        connectionState: WebSocketConnectionState.DISCONNECTED 
+        connectionState: WebSocketConnectionState.DISCONNECTED
       });
     }
+
+    echoService.disconnect();
   },
 
   // Conversations
@@ -238,16 +311,30 @@ export const useChatStore = create<ChatState>((set, get) => ({
   },
 
   setCurrentConversation: (conversationId: number | null) => {
+    const { currentConversationId } = get();
+
+    // Unsubscribe from previous conversation
+    if (currentConversationId && currentConversationId !== conversationId) {
+      get().unsubscribeFromConversation(currentConversationId);
+    }
+
     set({ currentConversationId: conversationId });
-    
-    // Join WebSocket room if connected
-    const { wsManager } = get();
-    if (wsManager && conversationId && wsManager.isConnected()) {
-      wsManager.sendMessage({
-        type: 'chat.join',
-        conversation_id: conversationId,
-        user_id: 1, // TODO: Get from auth store
-      });
+
+    // Subscribe to new conversation
+    if (conversationId) {
+      get().subscribeToConversation(conversationId);
+
+      // Join WebSocket room if connected (fallback for direct WebSocket)
+      const { wsManager, echoService } = get();
+      if (echoService.isConnected()) {
+        echoService.joinChat(conversationId, 1); // TODO: Get from auth store
+      } else if (wsManager && wsManager.isConnected()) {
+        wsManager.sendMessage({
+          type: 'chat.join',
+          conversation_id: conversationId,
+          user_id: 1, // TODO: Get from auth store
+        });
+      }
     }
   },
 
@@ -267,9 +354,19 @@ export const useChatStore = create<ChatState>((set, get) => ({
     
     get().addPendingMessage(pendingMessage);
 
-    const { wsManager } = get();
-    
-    // Try WebSocket first
+    const { wsManager, echoService } = get();
+
+    // Try Echo service first
+    if (echoService.isConnected()) {
+      const success = echoService.sendMessage(conversationId, content, clientNonce);
+
+      if (success) {
+        get().updatePendingMessageStatus(clientNonce, 'sending');
+        return;
+      }
+    }
+
+    // Try WebSocket fallback
     if (wsManager && wsManager.isConnected()) {
       const success = wsManager.sendMessage({
         type: 'message.send',
@@ -434,6 +531,30 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
       default:
         console.log('Unhandled WebSocket event:', event.type);
+    }
+  },
+
+  handleGameEvent: (eventType: string, event: any) => {
+    // Forward game events to game store
+    // Note: This creates a loose coupling between stores
+    // In a real app, you might want to use a more structured approach
+    const gameStore = require('@/stores/game').useGameStore.getState();
+
+    switch (eventType) {
+      case 'game.started':
+        gameStore.handleGameStarted(event);
+        break;
+      case 'game.move':
+        gameStore.handleGameMove(event);
+        break;
+      case 'game.ended':
+        gameStore.handleGameEnded(event);
+        break;
+      case 'game.timeout':
+        gameStore.handleGameTimeout(event);
+        break;
+      default:
+        console.log('Unhandled game event:', eventType, event);
     }
   },
 

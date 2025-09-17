@@ -17,6 +17,7 @@ import { Ionicons } from '@expo/vector-icons';
 import Swiper from 'react-native-deck-swiper';
 import { FeedUser } from '@/lib/types';
 import { ProfileImage } from '@/components/ui/ImageWithFallback';
+import { imageCacheService } from '@/services/ImageCacheService';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -38,6 +39,7 @@ export const SwipeCard = forwardRef<SwipeCardRef, SwipeCardProps>(
     const swiperRef = useRef<Swiper<FeedUser>>(null);
     const [photoIndices, setPhotoIndices] = useState<{ [key: number]: number }>({});
     const [preloadedImages, setPreloadedImages] = useState<Set<string>>(new Set());
+    const [currentCardIndex, setCurrentCardIndex] = useState(0);
     const fadeAnim = useRef(new Animated.Value(1)).current;
 
     useImperativeHandle(ref, () => ({
@@ -45,43 +47,24 @@ export const SwipeCard = forwardRef<SwipeCardRef, SwipeCardProps>(
       swipeRight: () => swiperRef.current?.swipeRight(),
     }));
 
-    // Preload images for next few users
+    // Smart image preloading with cache service
     useEffect(() => {
-      const preloadNextImages = async () => {
-        const imagesToPreload: string[] = [];
-
-        // Preload images for first 3 users
-        users.slice(0, 3).forEach(user => {
-          if (user.photos) {
-            user.photos.forEach(photo => {
-              if (photo.url && !preloadedImages.has(photo.url)) {
-                imagesToPreload.push(photo.url);
-              }
-            });
-          } else if (user.profile.primary_photo_url && !preloadedImages.has(user.profile.primary_photo_url)) {
-            imagesToPreload.push(user.profile.primary_photo_url);
-          }
-        });
-
-        // Preload images (using expo-image's built-in preloading)
-        imagesToPreload.forEach(uri => {
-          // This will cache the image for later use
-          ProfileImage.preload([{ uri }]);
-        });
-
-        setPreloadedImages(new Set([...preloadedImages, ...imagesToPreload]));
+      const preloadImages = async () => {
+        if (users.length > 0) {
+          // Preload images for current and next few cards
+          await imageCacheService.preloadForSwipeCard(users, currentCardIndex, 3);
+        }
       };
 
-      if (users.length > 0) {
-        preloadNextImages();
-      }
-    }, [users]);
+      preloadImages();
+    }, [users, currentCardIndex]);
 
     const handleSwipedLeft = (cardIndex: number) => {
       const user = users[cardIndex];
       if (user) {
         onPass(user.id);
       }
+      setCurrentCardIndex(cardIndex + 1);
     };
 
     const handleSwipedRight = (cardIndex: number) => {
@@ -89,6 +72,7 @@ export const SwipeCard = forwardRef<SwipeCardRef, SwipeCardProps>(
       if (user) {
         onLike(user.id);
       }
+      setCurrentCardIndex(cardIndex + 1);
     };
 
     const getCurrentPhotoIndex = (userId: number): number => {
@@ -191,22 +175,40 @@ export const SwipeCard = forwardRef<SwipeCardRef, SwipeCardProps>(
             {/* Enhanced Photo Indicators */}
             {hasMultiplePhotos(user) && user.photos && (
               <View style={styles.indicatorContainer} testID="photo-indicators">
-                {user.photos.map((_, photoIndex) => (
-                  <TouchableOpacity
-                    key={photoIndex}
-                    style={[
-                      styles.indicator,
-                      photoIndex === currentPhotoIndex && styles.activeIndicator,
-                    ]}
-                    onPress={() => {
-                      setPhotoIndices(prev => ({ ...prev, [user.id]: photoIndex }));
-                    }}
-                  />
-                ))}
-                {/* Photo counter */}
+                <View style={styles.indicatorRow}>
+                  {user.photos.map((_, photoIndex) => (
+                    <TouchableOpacity
+                      key={photoIndex}
+                      style={[
+                        styles.indicator,
+                        photoIndex === currentPhotoIndex && styles.activeIndicator,
+                      ]}
+                      onPress={() => {
+                        // Animate indicator change
+                        Animated.sequence([
+                          Animated.timing(fadeAnim, {
+                            toValue: 0.5,
+                            duration: 50,
+                            useNativeDriver: true,
+                          }),
+                          Animated.timing(fadeAnim, {
+                            toValue: 1,
+                            duration: 150,
+                            useNativeDriver: true,
+                          }),
+                        ]).start();
+
+                        setPhotoIndices(prev => ({ ...prev, [user.id]: photoIndex }));
+                      }}
+                      hitSlop={{ top: 10, bottom: 10, left: 5, right: 5 }}
+                    />
+                  ))}
+                </View>
+
+                {/* Photo counter with enhanced styling */}
                 <View style={styles.photoCounter}>
                   <Text style={styles.photoCounterText}>
-                    {currentPhotoIndex + 1}/{user.photos.length}
+                    {currentPhotoIndex + 1} / {user.photos.length}
                   </Text>
                 </View>
               </View>
@@ -408,29 +410,48 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     zIndex: 5,
   },
+  indicatorRow: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginRight: 12,
+  },
   indicator: {
     flex: 1,
-    height: 3,
-    borderRadius: 1.5,
-    backgroundColor: 'rgba(255, 255, 255, 0.4)',
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: 'rgba(255, 255, 255, 0.3)',
     marginHorizontal: 1,
+    borderWidth: 0.5,
+    borderColor: 'rgba(255, 255, 255, 0.1)',
   },
   activeIndicator: {
-    backgroundColor: 'rgba(255, 255, 255, 0.9)',
+    backgroundColor: 'rgba(255, 255, 255, 0.95)',
+    borderColor: 'rgba(255, 255, 255, 0.8)',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.2,
+    shadowRadius: 1,
+    elevation: 2,
   },
   photoCounter: {
-    position: 'absolute',
-    right: 0,
-    top: -2,
-    backgroundColor: 'rgba(0, 0, 0, 0.6)',
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 12,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 14,
+    minWidth: 40,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.3,
+    shadowRadius: 2,
+    elevation: 3,
   },
   photoCounterText: {
     color: '#fff',
-    fontSize: 12,
-    fontWeight: '500',
+    fontSize: 11,
+    fontWeight: 'bold',
+    textAlign: 'center',
   },
   defaultPhoto: {
     flex: 1,

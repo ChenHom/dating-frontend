@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { Photo, PhotoUploadRequest } from '@/lib/types';
+import { apiClient } from '@/services/api/client';
 
 export type PhotoUploadStatus = 'idle' | 'preparing' | 'uploading' | 'success' | 'error';
 
@@ -162,14 +163,12 @@ export const usePhotoStore = create<PhotoState>((set, get) => ({
     }
   },
 
-  // Async actions (will be implemented with API client)
+  // Async actions
   fetchPhotos: async () => {
     set({ isLoading: true, error: null });
     try {
-      // TODO: Implement with API client
-      // const photos = await apiClient.getPhotos();
-      // get().setPhotos(photos);
-      console.log('fetchPhotos: To be implemented');
+      const photos = await apiClient.getPhotos();
+      get().setPhotos(photos);
     } catch (error) {
       set({ error: error instanceof Error ? error.message : 'Failed to fetch photos' });
     } finally {
@@ -181,24 +180,35 @@ export const usePhotoStore = create<PhotoState>((set, get) => ({
     const item = get().uploadQueue.find(item => item.id === id);
     if (!item) return;
 
-    get().updateUploadProgress(id, { status: 'uploading', progress: 0 });
+    get().updateUploadProgress(id, { status: 'uploading', progress: 10 });
     set({ isUploading: true });
 
     try {
-      // TODO: Implement with API client and image processing
-      // const processedImage = await processImage(item.file.uri);
-      // const photo = await apiClient.uploadPhoto(processedImage);
-      // get().addPhoto(photo);
-      // get().removeFromUploadQueue(id);
+      // Find the upload request data (need to store this in queue)
+      const uploadRequests = get().uploadQueue.filter(item => item.id === id);
+      if (uploadRequests.length === 0) throw new Error('Upload data not found');
 
-      // Simulate upload progress for now
-      for (let i = 0; i <= 100; i += 10) {
-        get().updateUploadProgress(id, { progress: i });
-        await new Promise(resolve => setTimeout(resolve, 100));
-      }
+      get().updateUploadProgress(id, { progress: 50 });
 
+      // Call API to upload photo
+      const uploadData: PhotoUploadRequest = {
+        image: (item as any).uploadData?.image || '',
+        order: get().photos.length + 1,
+      };
+
+      const photo = await apiClient.uploadPhoto(uploadData);
+
+      get().updateUploadProgress(id, { progress: 90 });
+
+      // Add to photos and remove from queue
+      get().addPhoto(photo);
       get().updateUploadProgress(id, { status: 'success', progress: 100 });
-      console.log('uploadPhoto: To be implemented');
+
+      // Remove from queue after delay
+      setTimeout(() => {
+        get().removeFromUploadQueue(id);
+      }, 2000);
+
     } catch (error) {
       get().updateUploadProgress(id, {
         status: 'error',
@@ -212,10 +222,8 @@ export const usePhotoStore = create<PhotoState>((set, get) => ({
   deletePhoto: async (photoId) => {
     set({ isLoading: true, error: null });
     try {
-      // TODO: Implement with API client
-      // await apiClient.deletePhoto(photoId);
+      await apiClient.deletePhoto(photoId);
       get().removePhoto(photoId);
-      console.log('deletePhoto: To be implemented');
     } catch (error) {
       set({ error: error instanceof Error ? error.message : 'Failed to delete photo' });
     } finally {
@@ -226,8 +234,7 @@ export const usePhotoStore = create<PhotoState>((set, get) => ({
   setPrimaryPhotoAsync: async (photoId) => {
     set({ isLoading: true, error: null });
     try {
-      // TODO: Implement with API client
-      // await apiClient.setPrimaryPhoto(photoId);
+      await apiClient.setPrimaryPhoto(photoId);
       const photo = get().photos.find(p => p.id === photoId);
       if (photo) {
         // Update all photos: set others to non-primary, set target to primary
@@ -239,7 +246,6 @@ export const usePhotoStore = create<PhotoState>((set, get) => ({
           primaryPhoto: photo
         }));
       }
-      console.log('setPrimaryPhotoAsync: To be implemented');
     } catch (error) {
       set({ error: error instanceof Error ? error.message : 'Failed to set primary photo' });
     } finally {
