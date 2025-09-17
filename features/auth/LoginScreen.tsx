@@ -3,7 +3,7 @@
  * 用戶登入頁面
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -28,6 +28,7 @@ export const LoginScreen: React.FC = () => {
   const [formErrors, setFormErrors] = useState<FormErrors>({});
 
   const { login, isLoading, error, clearError, isAuthenticated } = useAuthStore();
+  const passwordInputRef = useRef<TextInput>(null);
 
   // Navigate to main app when authenticated
   useEffect(() => {
@@ -118,6 +119,9 @@ export const LoginScreen: React.FC = () => {
                 autoCapitalize="none"
                 autoCorrect={false}
                 keyboardType="email-address"
+                returnKeyType="next"
+                onSubmitEditing={() => passwordInputRef.current?.focus()}
+                blurOnSubmit={false}
                 testID="email-input"
                 style={{
                   borderWidth: 1,
@@ -145,6 +149,13 @@ export const LoginScreen: React.FC = () => {
                 secureTextEntry
                 autoCapitalize="none"
                 autoCorrect={false}
+                returnKeyType="done"
+                ref={passwordInputRef}
+                onSubmitEditing={() => {
+                  if (!isLoading) {
+                    void handleLogin();
+                  }
+                }}
                 testID="password-input"
                 style={{
                   borderWidth: 1,
