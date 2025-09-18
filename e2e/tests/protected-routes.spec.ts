@@ -6,7 +6,7 @@
  */
 
 import { test, expect } from '@playwright/test';
-import { NavigationHelpers, URL_PATTERNS, PAGE_TEST_IDS } from '../utils/navigation-helpers';
+import { NavigationHelpers, URL_PATTERNS, PAGE_TEST_IDS, setAuthenticatedState, clearAuthenticatedState, waitForProtectedRouteCheck } from '../utils/navigation-helpers';
 
 const BASE_URL = 'http://localhost:8083';
 
@@ -37,8 +37,8 @@ test.describe('Protected Routes Tests', () => {
     test.beforeEach(async ({ page }) => {
       // 確保完全清除認證狀態
       await page.context().clearCookies();
+      await clearAuthenticatedState(page);
       await page.evaluate(() => {
-        localStorage.clear();
         sessionStorage.clear();
       });
     });
@@ -47,6 +47,9 @@ test.describe('Protected Routes Tests', () => {
       test(`未認證訪問${route.description}應被阻擋並重定向`, async ({ page }) => {
         // 嘗試直接訪問受保護路由
         await nav.navigateToUrl(`${BASE_URL}${route.path}`);
+
+        // 等待 ProtectedRoute 檢查完成
+        await waitForProtectedRouteCheck(page);
 
         // 等待重定向到登入頁面
         await page.waitForURL(URL_PATTERNS.LOGIN, { timeout: 15000 });
@@ -79,6 +82,9 @@ test.describe('Protected Routes Tests', () => {
     test('未認證訪問首頁應重定向到登入頁面', async ({ page }) => {
       await nav.navigateToUrl(BASE_URL);
 
+      // 等待 ProtectedRoute 檢查完成
+      await waitForProtectedRouteCheck(page);
+
       // 等待重定向
       await page.waitForURL(URL_PATTERNS.LOGIN, { timeout: 15000 });
 
@@ -90,13 +96,10 @@ test.describe('Protected Routes Tests', () => {
   test.describe('已認證狀態的存取控制', () => {
     test.beforeEach(async ({ page }) => {
       // 設置已認證狀態
-      await page.evaluate(() => {
-        localStorage.setItem('auth-token', 'valid-test-token');
-        localStorage.setItem('auth-user', JSON.stringify({
-          id: 1,
-          name: 'Test User',
-          email: 'test@example.com'
-        }));
+      await setAuthenticatedState(page, {
+        id: 1,
+        name: 'Test User',
+        email: 'test@example.com'
       });
     });
 
@@ -104,6 +107,9 @@ test.describe('Protected Routes Tests', () => {
       test(`已認證訪問${route.description}應正常顯示`, async ({ page }) => {
         // 訪問受保護路由
         await nav.navigateToUrl(`${BASE_URL}${route.path}`);
+
+        // 等待 ProtectedRoute 檢查完成
+        await waitForProtectedRouteCheck(page);
 
         // 等待頁面載入
         await nav.waitForPageLoad();
@@ -143,6 +149,9 @@ test.describe('Protected Routes Tests', () => {
     test('已認證訪問首頁應重定向到探索頁面', async ({ page }) => {
       await nav.navigateToUrl(BASE_URL);
 
+      // 等待 ProtectedRoute 檢查完成
+      await waitForProtectedRouteCheck(page);
+
       // 等待重定向到探索頁面
       await page.waitForURL(URL_PATTERNS.DISCOVER, { timeout: 15000 });
 
@@ -155,8 +164,8 @@ test.describe('Protected Routes Tests', () => {
     test('載入狀態顯示測試', async ({ page }) => {
       // 清除認證狀態
       await page.context().clearCookies();
+      await clearAuthenticatedState(page);
       await page.evaluate(() => {
-        localStorage.clear();
         sessionStorage.clear();
       });
 
@@ -183,8 +192,8 @@ test.describe('Protected Routes Tests', () => {
     test('認證檢查載入狀態測試', async ({ page }) => {
       // 清除認證狀態
       await page.context().clearCookies();
+      await clearAuthenticatedState(page);
       await page.evaluate(() => {
-        localStorage.clear();
         sessionStorage.clear();
       });
 
@@ -214,8 +223,8 @@ test.describe('Protected Routes Tests', () => {
     test('認證狀態快速變化處理', async ({ page }) => {
       // 從未認證開始
       await page.context().clearCookies();
+      await clearAuthenticatedState(page);
       await page.evaluate(() => {
-        localStorage.clear();
         sessionStorage.clear();
       });
 
@@ -226,17 +235,11 @@ test.describe('Protected Routes Tests', () => {
       await page.waitForURL(URL_PATTERNS.LOGIN, { timeout: 10000 });
 
       // 快速設置認證狀態
-      await page.evaluate(() => {
-        localStorage.setItem('auth-token', 'quick-auth-token');
-        localStorage.setItem('auth-user', JSON.stringify({
-          id: 5,
-          name: 'Quick User',
-          email: 'quick@example.com'
-        }));
-
-        // 觸發狀態變化事件
-        window.dispatchEvent(new Event('storage'));
-      });
+      await setAuthenticatedState(page, {
+        id: 5,
+        name: 'Quick User',
+        email: 'quick@example.com'
+      }, 'quick-auth-token');
 
       // 重新嘗試訪問受保護頁面
       await nav.navigateToUrl(`${BASE_URL}/(tabs)/discover`);
@@ -252,12 +255,23 @@ test.describe('Protected Routes Tests', () => {
     test('無效認證令牌處理', async ({ page }) => {
       // 設置無效認證狀態
       await page.evaluate(() => {
-        localStorage.setItem('auth-token', '');
-        localStorage.setItem('auth-user', '{}');
+        // 設置無效的 Zustand 格式
+        const invalidAuthStorage = {
+          state: {
+            user: {},
+            token: '',
+            isAuthenticated: false
+          },
+          version: 0
+        };
+        localStorage.setItem('auth-storage', JSON.stringify(invalidAuthStorage));
       });
 
       // 嘗試訪問受保護頁面
       await nav.navigateToUrl(`${BASE_URL}/(tabs)/discover`);
+
+      // 等待 ProtectedRoute 檢查完成
+      await waitForProtectedRouteCheck(page);
 
       await nav.waitForPageLoad();
 
@@ -275,12 +289,14 @@ test.describe('Protected Routes Tests', () => {
     test('損壞的認證資料處理', async ({ page }) => {
       // 設置損壞的認證資料
       await page.evaluate(() => {
-        localStorage.setItem('auth-token', 'valid-token');
-        localStorage.setItem('auth-user', 'invalid-json');
+        localStorage.setItem('auth-storage', 'invalid-json');
       });
 
       // 嘗試訪問受保護頁面
       await nav.navigateToUrl(`${BASE_URL}/(tabs)/discover`);
+
+      // 等待 ProtectedRoute 檢查完成
+      await waitForProtectedRouteCheck(page);
 
       await nav.waitForPageLoad();
 
@@ -297,24 +313,18 @@ test.describe('Protected Routes Tests', () => {
 
     test('認證狀態丟失處理', async ({ page }) => {
       // 設置已認證狀態
-      await page.evaluate(() => {
-        localStorage.setItem('auth-token', 'initial-token');
-        localStorage.setItem('auth-user', JSON.stringify({
-          id: 6,
-          name: 'Initial User',
-          email: 'initial@example.com'
-        }));
-      });
+      await setAuthenticatedState(page, {
+        id: 6,
+        name: 'Initial User',
+        email: 'initial@example.com'
+      }, 'initial-token');
 
       // 訪問受保護頁面
       await nav.navigateToUrl(`${BASE_URL}/(tabs)/discover`);
       expect(await nav.verifyUrl(URL_PATTERNS.DISCOVER)).toBe(true);
 
       // 模擬認證狀態丟失
-      await page.evaluate(() => {
-        localStorage.removeItem('auth-token');
-        localStorage.removeItem('auth-user');
-      });
+      await clearAuthenticatedState(page);
 
       // 重新載入頁面或導航
       await page.reload();
@@ -334,8 +344,8 @@ test.describe('Protected Routes Tests', () => {
     test('同時多個受保護路由訪問', async ({ page, context }) => {
       // 清除認證狀態
       await context.clearCookies();
+      await clearAuthenticatedState(page);
       await page.evaluate(() => {
-        localStorage.clear();
         sessionStorage.clear();
       });
 
@@ -395,14 +405,11 @@ test.describe('Protected Routes Tests', () => {
 
     test('已認證用戶存取回應時間測試', async ({ page }) => {
       // 設置已認證狀態
-      await page.evaluate(() => {
-        localStorage.setItem('auth-token', 'performance-test-token');
-        localStorage.setItem('auth-user', JSON.stringify({
-          id: 7,
-          name: 'Performance User',
-          email: 'performance@example.com'
-        }));
-      });
+      await setAuthenticatedState(page, {
+        id: 7,
+        name: 'Performance User',
+        email: 'performance@example.com'
+      }, 'performance-test-token');
 
       const startTime = Date.now();
 
@@ -427,13 +434,23 @@ test.describe('Protected Routes Tests', () => {
       console.log(`受保護路由測試失敗截圖: ${screenshot}`);
 
       // 記錄認證狀態和路由資訊
-      const debugInfo = await page.evaluate(() => ({
-        url: window.location.href,
-        authToken: localStorage.getItem('auth-token'),
-        authUser: localStorage.getItem('auth-user'),
-        cookies: document.cookie,
-        userAgent: navigator.userAgent
-      }));
+      const debugInfo = await page.evaluate(() => {
+        const authStorage = localStorage.getItem('auth-storage');
+        let authState = null;
+
+        try {
+          authState = authStorage ? JSON.parse(authStorage) : null;
+        } catch (error) {
+          authState = { error: 'Failed to parse auth storage', raw: authStorage };
+        }
+
+        return {
+          url: window.location.href,
+          authStorage: authState,
+          cookies: document.cookie,
+          userAgent: navigator.userAgent
+        };
+      });
 
       console.log('除錯資訊:', debugInfo);
       await nav.logPageState('受保護路由測試失敗');

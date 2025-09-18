@@ -36,4 +36,15 @@ yarn-error.*
 # typescript
 *.tsbuildinfo
 
+# Playwright test results and reports
+test-results/
+e2e/test-results/
+e2e/reports/
+e2e/fixtures/
+playwright-report/
+
+# Test screenshots and debug files
+debug-*.png
+*.png
+
 app-example

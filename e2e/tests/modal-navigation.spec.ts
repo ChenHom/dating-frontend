@@ -6,7 +6,7 @@
  */
 
 import { test, expect } from '@playwright/test';
-import { NavigationHelpers, URL_PATTERNS, PAGE_TEST_IDS } from '../utils/navigation-helpers';
+import { NavigationHelpers, URL_PATTERNS, PAGE_TEST_IDS, setAuthenticatedState, waitForProtectedRouteCheck } from '../utils/navigation-helpers';
 
 const BASE_URL = 'http://localhost:8083';
 
@@ -17,20 +17,21 @@ test.describe('Modal Navigation Tests', () => {
     nav = new NavigationHelpers(page);
 
     // 設置已認證狀態
-    await page.evaluate(() => {
-      localStorage.setItem('auth-token', 'modal-test-token');
-      localStorage.setItem('auth-user', JSON.stringify({
-        id: 1,
-        name: 'Modal Test User',
-        email: 'modaltest@example.com'
-      }));
-    });
+    await setAuthenticatedState(page, {
+      id: 1,
+      name: 'Modal Test User',
+      email: 'modaltest@example.com'
+    }, 'modal-test-token');
   });
 
   test.describe('編輯個人檔案模態視窗', () => {
     test('從個人檔案頁面開啟編輯模態視窗', async ({ page }) => {
       // 導航到個人檔案頁面
       await nav.navigateToUrl(`${BASE_URL}/(tabs)/profile`);
+
+      // 等待 ProtectedRoute 檢查完成
+      await waitForProtectedRouteCheck(page);
+
       expect(await nav.verifyPageContent(PAGE_TEST_IDS.PROFILE_CONTAINER)).toBe(true);
 
       // 檢查編輯檔案選項是否存在
@@ -56,6 +57,10 @@ test.describe('Modal Navigation Tests', () => {
     test('編輯模態視窗的關閉功能', async ({ page }) => {
       // 先開啟編輯模態視窗
       await nav.navigateToUrl(`${BASE_URL}/profile/edit`);
+
+      // 等待 ProtectedRoute 檢查完成
+      await waitForProtectedRouteCheck(page);
+
       expect(await nav.verifyUrl(URL_PATTERNS.EDIT_PROFILE)).toBe(true);
 
       // 測試不同的關閉方式
@@ -99,6 +104,10 @@ test.describe('Modal Navigation Tests', () => {
 
     test('編輯模態視窗中的表單操作', async ({ page }) => {
       await nav.navigateToUrl(`${BASE_URL}/profile/edit`);
+
+      // 等待 ProtectedRoute 檢查完成
+      await waitForProtectedRouteCheck(page);
+
       await nav.waitForPageLoad();
 
       // 檢查表單元素是否存在
@@ -133,6 +142,10 @@ test.describe('Modal Navigation Tests', () => {
     test('從個人檔案頁面開啟設定模態視窗', async ({ page }) => {
       // 導航到個人檔案頁面
       await nav.navigateToUrl(`${BASE_URL}/(tabs)/profile`);
+
+      // 等待 ProtectedRoute 檢查完成
+      await waitForProtectedRouteCheck(page);
+
       expect(await nav.verifyPageContent(PAGE_TEST_IDS.PROFILE_CONTAINER)).toBe(true);
 
       // 檢查設定選項是否存在
@@ -158,6 +171,10 @@ test.describe('Modal Navigation Tests', () => {
     test('設定模態視窗的返回功能', async ({ page }) => {
       // 直接導航到設定頁面
       await nav.navigateToUrl(`${BASE_URL}/settings`);
+
+      // 等待 ProtectedRoute 檢查完成
+      await waitForProtectedRouteCheck(page);
+
       expect(await nav.verifyUrl(URL_PATTERNS.SETTINGS)).toBe(true);
 
       // 測試返回功能
@@ -173,6 +190,10 @@ test.describe('Modal Navigation Tests', () => {
 
     test('設定頁面內的導航選項', async ({ page }) => {
       await nav.navigateToUrl(`${BASE_URL}/settings`);
+
+      // 等待 ProtectedRoute 檢查完成
+      await waitForProtectedRouteCheck(page);
+
       await nav.waitForPageLoad();
 
       // 檢查設定頁面內是否有各種選項

@@ -240,6 +240,107 @@ export class NavigationHelpers {
       timestamp: new Date().toISOString()
     });
   }
+
+  /**
+   * 設定已認證狀態 (使用正確的 Zustand 格式)
+   */
+  async setAuthenticatedState(user = {
+    id: 'test-user-1',
+    email: 'test@example.com',
+    name: 'Test User'
+  }, token = 'mock-jwt-token'): Promise<void> {
+    console.log('🔐 Setting authenticated state with Zustand format...');
+
+    await this.page.evaluate(({ user, token }) => {
+      // 設定正確的 Zustand 持久化格式
+      const authStorage = {
+        state: {
+          user,
+          token,
+          isAuthenticated: true
+        },
+        version: 0
+      };
+
+      localStorage.setItem('auth-storage', JSON.stringify(authStorage));
+
+      // 觸發 storage 事件讓 Zustand 重新水化
+      window.dispatchEvent(new Event('storage'));
+
+      console.log('💾 Auth state set:', authStorage);
+    }, { user, token });
+
+    // 等待 Zustand store 重新水化
+    await this.page.waitForTimeout(200);
+  }
+
+  /**
+   * 清除認證狀態
+   */
+  async clearAuthenticatedState(): Promise<void> {
+    console.log('🚪 Clearing authenticated state...');
+
+    await this.page.evaluate(() => {
+      localStorage.removeItem('auth-storage');
+      localStorage.removeItem('auth-token');
+      localStorage.removeItem('auth-user');
+
+      // 觸發 storage 事件
+      window.dispatchEvent(new Event('storage'));
+    });
+
+    // 等待狀態變化
+    await this.page.waitForTimeout(200);
+  }
+
+  /**
+   * 等待 ProtectedRoute 檢查完成
+   * ProtectedRoute 有 100ms 的導航準備延遲
+   */
+  async waitForProtectedRouteCheck(timeout = 3000): Promise<void> {
+    const startTime = Date.now();
+
+    while (Date.now() - startTime < timeout) {
+      // 檢查是否還在載入狀態
+      const isLoading = await this.isElementVisible('[data-testid="auth-loading"]', 500).catch(() => false);
+      const isRedirecting = await this.isElementVisible('[data-testid="auth-redirect"]', 500).catch(() => false);
+
+      if (!isLoading && !isRedirecting) {
+        // 額外等待確保導航完成
+        await this.page.waitForTimeout(300);
+        break;
+      }
+
+      await this.page.waitForTimeout(100);
+    }
+  }
+
+  /**
+   * 驗證認證狀態是否正確設定
+   */
+  async verifyAuthState(): Promise<{ isAuthenticated: boolean, hasToken: boolean, hasUser: boolean }> {
+    return await this.page.evaluate(() => {
+      const authStorage = localStorage.getItem('auth-storage');
+
+      if (!authStorage) {
+        return { isAuthenticated: false, hasToken: false, hasUser: false };
+      }
+
+      try {
+        const parsed = JSON.parse(authStorage);
+        const state = parsed.state || {};
+
+        return {
+          isAuthenticated: Boolean(state.isAuthenticated),
+          hasToken: Boolean(state.token),
+          hasUser: Boolean(state.user)
+        };
+      } catch (error) {
+        console.error('Failed to parse auth storage:', error);
+        return { isAuthenticated: false, hasToken: false, hasUser: false };
+      }
+    });
+  }
 }
 
 /**
@@ -288,3 +389,175 @@ export const PAGE_TEST_IDS = {
   LOGOUT_BUTTON: 'logout-button',
   BACK_BUTTON: 'back-button'
 } as const;
+
+/**
+ * 獨立的認證輔助函數
+ * 可直接在測試檔案中使用，無需 NavigationHelpers 實例
+ */
+
+/**
+ * 設定已認證狀態 (獨立函數版本)
+ */
+export async function setAuthenticatedState(
+  page: Page,
+  user = {
+    id: 'test-user-1',
+    email: 'test@example.com',
+    name: 'Test User'
+  },
+  token = 'mock-jwt-token'
+): Promise<void> {
+  console.log('🔐 Setting authenticated state with Zustand format...');
+
+  // 先等待頁面完全載入
+  await page.waitForLoadState('networkidle');
+
+  // 確保導航到正確的頁面以避免 CORS 問題
+  const currentUrl = page.url();
+  if (!currentUrl.includes('localhost:8083')) {
+    await page.goto('http://localhost:8083');
+    await page.waitForLoadState('networkidle');
+  }
+
+  try {
+    await page.evaluate(({ user, token }) => {
+      // 檢查 localStorage 是否可用
+      if (typeof Storage === 'undefined') {
+        throw new Error('localStorage not available');
+      }
+
+      // 設定正確的 Zustand 持久化格式
+      const authStorage = {
+        state: {
+          user,
+          token,
+          isAuthenticated: true
+        },
+        version: 0
+      };
+
+      localStorage.setItem('auth-storage', JSON.stringify(authStorage));
+
+      // 觸發 storage 事件讓 Zustand 重新水化
+      window.dispatchEvent(new Event('storage'));
+
+      console.log('💾 Auth state set:', authStorage);
+    }, { user, token });
+
+    // 等待 Zustand store 重新水化
+    await page.waitForTimeout(300);
+  } catch (error) {
+    console.error('❌ Failed to set authenticated state:', error);
+    // 如果 localStorage 方法失敗，嘗試使用 Playwright 的 context.addInitScript
+    await page.context().addInitScript(({ user, token }) => {
+      const authStorage = {
+        state: {
+          user,
+          token,
+          isAuthenticated: true
+        },
+        version: 0
+      };
+      localStorage.setItem('auth-storage', JSON.stringify(authStorage));
+    }, { user, token });
+
+    // 重新載入頁面以確保 script 執行
+    await page.reload();
+    await page.waitForLoadState('networkidle');
+  }
+}
+
+/**
+ * 清除認證狀態 (獨立函數版本)
+ */
+export async function clearAuthenticatedState(page: Page): Promise<void> {
+  console.log('🚪 Clearing authenticated state...');
+
+  // 先等待頁面完全載入
+  await page.waitForLoadState('networkidle');
+
+  // 確保導航到正確的頁面以避免 CORS 問題
+  const currentUrl = page.url();
+  if (!currentUrl.includes('localhost:8083')) {
+    await page.goto('http://localhost:8083');
+    await page.waitForLoadState('networkidle');
+  }
+
+  try {
+    await page.evaluate(() => {
+      // 檢查 localStorage 是否可用
+      if (typeof Storage === 'undefined') {
+        throw new Error('localStorage not available');
+      }
+
+      localStorage.removeItem('auth-storage');
+      localStorage.removeItem('auth-token');
+      localStorage.removeItem('auth-user');
+
+      // 觸發 storage 事件
+      window.dispatchEvent(new Event('storage'));
+    });
+  } catch (error) {
+    console.error('❌ Failed to clear authenticated state:', error);
+    // 如果直接清除失敗，重新載入頁面
+    await page.reload();
+    await page.waitForLoadState('networkidle');
+  }
+
+  // 等待狀態變化
+  await page.waitForTimeout(200);
+}
+
+/**
+ * 等待 ProtectedRoute 檢查完成 (獨立函數版本)
+ */
+export async function waitForProtectedRouteCheck(page: Page, timeout = 3000): Promise<void> {
+  const startTime = Date.now();
+
+  while (Date.now() - startTime < timeout) {
+    // 檢查是否還在載入狀態
+    try {
+      const isLoading = await page.isVisible('[data-testid="auth-loading"]', { timeout: 500 });
+      const isRedirecting = await page.isVisible('[data-testid="auth-redirect"]', { timeout: 500 });
+
+      if (!isLoading && !isRedirecting) {
+        // 額外等待確保導航完成
+        await page.waitForTimeout(300);
+        break;
+      }
+    } catch {
+      // 元素不存在，可能已經完成載入
+      await page.waitForTimeout(300);
+      break;
+    }
+
+    await page.waitForTimeout(100);
+  }
+}
+
+/**
+ * 驗證認證狀態是否正確設定 (獨立函數版本)
+ */
+export async function verifyAuthState(page: Page): Promise<{ isAuthenticated: boolean, hasToken: boolean, hasUser: boolean }> {
+  return await page.evaluate(() => {
+    const authStorage = localStorage.getItem('auth-storage');
+
+    if (!authStorage) {
+      return { isAuthenticated: false, hasToken: false, hasUser: false };
+    }
+
+    try {
+      const parsed = JSON.parse(authStorage);
+      const state = parsed.state || {};
+
+      return {
+        isAuthenticated: Boolean(state.isAuthenticated),
+        hasToken: Boolean(state.token),
+        hasUser: Boolean(state.user)
+      };
+    } catch (error) {
+      console.error('Failed to parse auth storage:', error);
+      return { isAuthenticated: false, hasToken: false, hasUser: false };
+    }
+  });
+}

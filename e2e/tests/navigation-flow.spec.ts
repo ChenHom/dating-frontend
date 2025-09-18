@@ -6,7 +6,7 @@
  */
 
 import { test, expect } from '@playwright/test';
-import { NavigationHelpers, URL_PATTERNS, PAGE_TEST_IDS } from '../utils/navigation-helpers';
+import { NavigationHelpers, URL_PATTERNS, PAGE_TEST_IDS, setAuthenticatedState, clearAuthenticatedState, waitForProtectedRouteCheck } from '../utils/navigation-helpers';
 
 // 測試基礎 URL
 const BASE_URL = 'http://localhost:8083';
@@ -22,12 +22,15 @@ test.describe('Main Navigation Flow Tests', () => {
     test('未認證用戶訪問首頁應重定向到登入頁面', async ({ page }) => {
       // 確保未認證狀態
       await page.context().clearCookies();
-      await page.evaluate(() => localStorage.clear());
+      await clearAuthenticatedState(page);
       await page.evaluate(() => sessionStorage.clear());
 
       // 訪問首頁
       const result = await nav.navigateToUrl(BASE_URL);
       expect(result.success).toBe(true);
+
+      // 等待 ProtectedRoute 檢查完成
+      await waitForProtectedRouteCheck(page);
 
       // 等待重定向完成
       await page.waitForURL(URL_PATTERNS.LOGIN, { timeout: 10000 });
@@ -45,19 +48,18 @@ test.describe('Main Navigation Flow Tests', () => {
       await nav.waitForPageLoad();
 
       // 先模擬登入流程 (簡化版，實際應該填寫表單)
-      await page.evaluate(() => {
-        // 模擬認證狀態
-        localStorage.setItem('auth-token', 'mock-token');
-        localStorage.setItem('auth-user', JSON.stringify({
-          id: 1,
-          name: 'Test User',
-          email: 'test@example.com'
-        }));
-      });
+      await setAuthenticatedState(page, {
+        id: 1,
+        name: 'Test User',
+        email: 'test@example.com'
+      }, 'mock-token');
 
       // 重新訪問首頁
       const result = await nav.navigateToUrl(BASE_URL);
       expect(result.success).toBe(true);
+
+      // 等待 ProtectedRoute 檢查完成
+      await waitForProtectedRouteCheck(page);
 
       // 等待重定向到探索頁面
       await page.waitForURL(URL_PATTERNS.DISCOVER, { timeout: 10000 });
@@ -109,18 +111,18 @@ test.describe('Main Navigation Flow Tests', () => {
   test.describe('主應用 Tab 導航', () => {
     test.beforeEach(async ({ page }) => {
       // 設置已認證狀態
-      await page.goto(`${BASE_URL}/login`);
-      await page.evaluate(() => {
-        localStorage.setItem('auth-token', 'mock-token');
-        localStorage.setItem('auth-user', JSON.stringify({
-          id: 1,
-          name: 'Test User',
-          email: 'test@example.com'
-        }));
-      });
+      await setAuthenticatedState(page, {
+        id: 1,
+        name: 'Test User',
+        email: 'test@example.com'
+      }, 'mock-token');
 
       // 導航到探索頁面作為起點
       await nav.navigateToUrl(`${BASE_URL}/(tabs)/discover`);
+
+      // 等待 ProtectedRoute 檢查完成
+      await waitForProtectedRouteCheck(page);
+
       await nav.waitForPageLoad();
     });
 
@@ -166,19 +168,20 @@ test.describe('Main Navigation Flow Tests', () => {
   test.describe('深層頁面導航', () => {
     test.beforeEach(async ({ page }) => {
       // 設置已認證狀態
-      await page.evaluate(() => {
-        localStorage.setItem('auth-token', 'mock-token');
-        localStorage.setItem('auth-user', JSON.stringify({
-          id: 1,
-          name: 'Test User',
-          email: 'test@example.com'
-        }));
-      });
+      await setAuthenticatedState(page, {
+        id: 1,
+        name: 'Test User',
+        email: 'test@example.com'
+      }, 'mock-token');
     });
 
     test('訊息列表 → 聊天頁面 → 返回的導航', async ({ page }) => {
       // 導航到訊息列表
       await nav.navigateToUrl(`${BASE_URL}/(tabs)/messages`);
+
+      // 等待 ProtectedRoute 檢查完成
+      await waitForProtectedRouteCheck(page);
+
       expect(await nav.verifyPageContent(PAGE_TEST_IDS.CHAT_LIST_CONTAINER)).toBe(true);
 
       // 點擊第一個對話項目
@@ -213,6 +216,10 @@ test.describe('Main Navigation Flow Tests', () => {
     test('個人檔案 → 編輯檔案 → 返回的導航', async ({ page }) => {
       // 導航到個人檔案
       await nav.navigateToUrl(`${BASE_URL}/(tabs)/profile`);
+
+      // 等待 ProtectedRoute 檢查完成
+      await waitForProtectedRouteCheck(page);
+
       expect(await nav.verifyPageContent(PAGE_TEST_IDS.PROFILE_CONTAINER)).toBe(true);
 
       // 點擊編輯檔案選項
@@ -255,6 +262,10 @@ test.describe('Main Navigation Flow Tests', () => {
     test('個人檔案 → 設定 → 返回的導航', async ({ page }) => {
       // 導航到個人檔案
       await nav.navigateToUrl(`${BASE_URL}/(tabs)/profile`);
+
+      // 等待 ProtectedRoute 檢查完成
+      await waitForProtectedRouteCheck(page);
+
       expect(await nav.verifyPageContent(PAGE_TEST_IDS.PROFILE_CONTAINER)).toBe(true);
 
       // 點擊設定選項
@@ -288,17 +299,18 @@ test.describe('Main Navigation Flow Tests', () => {
   test.describe('特殊導航情境', () => {
     test('新聊天按鈕導航到探索頁面', async ({ page }) => {
       // 設置已認證狀態
-      await page.evaluate(() => {
-        localStorage.setItem('auth-token', 'mock-token');
-        localStorage.setItem('auth-user', JSON.stringify({
-          id: 1,
-          name: 'Test User',
-          email: 'test@example.com'
-        }));
-      });
+      await setAuthenticatedState(page, {
+        id: 1,
+        name: 'Test User',
+        email: 'test@example.com'
+      }, 'mock-token');
 
       // 導航到訊息列表
       await nav.navigateToUrl(`${BASE_URL}/(tabs)/messages`);
+
+      // 等待 ProtectedRoute 檢查完成
+      await waitForProtectedRouteCheck(page);
+
       expect(await nav.verifyPageContent(PAGE_TEST_IDS.CHAT_LIST_CONTAINER)).toBe(true);
 
       // 檢查新聊天按鈕是否存在
@@ -319,17 +331,18 @@ test.describe('Main Navigation Flow Tests', () => {
 
     test('登出流程導航', async ({ page }) => {
       // 設置已認證狀態
-      await page.evaluate(() => {
-        localStorage.setItem('auth-token', 'mock-token');
-        localStorage.setItem('auth-user', JSON.stringify({
-          id: 1,
-          name: 'Test User',
-          email: 'test@example.com'
-        }));
-      });
+      await setAuthenticatedState(page, {
+        id: 1,
+        name: 'Test User',
+        email: 'test@example.com'
+      }, 'mock-token');
 
       // 導航到個人檔案
       await nav.navigateToUrl(`${BASE_URL}/(tabs)/profile`);
+
+      // 等待 ProtectedRoute 檢查完成
+      await waitForProtectedRouteCheck(page);
+
       expect(await nav.verifyPageContent(PAGE_TEST_IDS.PROFILE_CONTAINER)).toBe(true);
 
       // 查找登出按鈕
@@ -354,17 +367,18 @@ test.describe('Main Navigation Flow Tests', () => {
   test.describe('錯誤處理與異常情境', () => {
     test('直接訪問無效的聊天 ID', async ({ page }) => {
       // 設置已認證狀態
-      await page.evaluate(() => {
-        localStorage.setItem('auth-token', 'mock-token');
-        localStorage.setItem('auth-user', JSON.stringify({
-          id: 1,
-          name: 'Test User',
-          email: 'test@example.com'
-        }));
-      });
+      await setAuthenticatedState(page, {
+        id: 1,
+        name: 'Test User',
+        email: 'test@example.com'
+      }, 'mock-token');
 
       // 訪問無效的聊天 ID
       await nav.navigateToUrl(`${BASE_URL}/chat/99999`);
+
+      // 等待 ProtectedRoute 檢查完成
+      await waitForProtectedRouteCheck(page);
+
       await nav.waitForPageLoad();
 
       // 檢查是否有錯誤處理或重定向
@@ -381,19 +395,21 @@ test.describe('Main Navigation Flow Tests', () => {
 
     test('瀏覽器返回按鈕導航', async ({ page }) => {
       // 設置已認證狀態
-      await page.evaluate(() => {
-        localStorage.setItem('auth-token', 'mock-token');
-        localStorage.setItem('auth-user', JSON.stringify({
-          id: 1,
-          name: 'Test User',
-          email: 'test@example.com'
-        }));
-      });
+      await setAuthenticatedState(page, {
+        id: 1,
+        name: 'Test User',
+        email: 'test@example.com'
+      }, 'mock-token');
 
       // 建立導航歷史
       await nav.navigateToUrl(`${BASE_URL}/(tabs)/discover`);
+      await waitForProtectedRouteCheck(page);
+
       await nav.navigateToUrl(`${BASE_URL}/(tabs)/matches`);
+      await waitForProtectedRouteCheck(page);
+
       await nav.navigateToUrl(`${BASE_URL}/(tabs)/messages`);
+      await waitForProtectedRouteCheck(page);
 
       // 使用瀏覽器返回按鈕
       await page.goBack();

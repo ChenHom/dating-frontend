@@ -6,7 +6,7 @@
  */
 
 import { test, expect } from '@playwright/test';
-import { NavigationHelpers, URL_PATTERNS, PAGE_TEST_IDS } from '../utils/navigation-helpers';
+import { NavigationHelpers, URL_PATTERNS, PAGE_TEST_IDS, setAuthenticatedState, clearAuthenticatedState, waitForProtectedRouteCheck } from '../utils/navigation-helpers';
 
 const BASE_URL = 'http://localhost:8083';
 
@@ -21,14 +21,17 @@ test.describe('Authentication Redirect Tests', () => {
     test.beforeEach(async ({ page }) => {
       // 確保完全清除認證狀態
       await page.context().clearCookies();
+      await clearAuthenticatedState(page);
       await page.evaluate(() => {
-        localStorage.clear();
         sessionStorage.clear();
       });
     });
 
     test('未認證訪問首頁應重定向到登入頁面', async ({ page }) => {
       await nav.navigateToUrl(BASE_URL);
+
+      // 等待 ProtectedRoute 檢查完成
+      await waitForProtectedRouteCheck(page);
 
       // 等待重定向完成
       await page.waitForURL(URL_PATTERNS.LOGIN, { timeout: 15000 });
@@ -43,6 +46,9 @@ test.describe('Authentication Redirect Tests', () => {
     test('未認證訪問探索頁面應重定向到登入頁面', async ({ page }) => {
       await nav.navigateToUrl(`${BASE_URL}/(tabs)/discover`);
 
+      // 等待 ProtectedRoute 檢查完成
+      await waitForProtectedRouteCheck(page);
+
       // 等待重定向到登入頁面
       await page.waitForURL(URL_PATTERNS.LOGIN, { timeout: 15000 });
 
@@ -52,6 +58,9 @@ test.describe('Authentication Redirect Tests', () => {
 
     test('未認證訪問配對頁面應重定向到登入頁面', async ({ page }) => {
       await nav.navigateToUrl(`${BASE_URL}/(tabs)/matches`);
+
+      // 等待 ProtectedRoute 檢查完成
+      await waitForProtectedRouteCheck(page);
 
       await page.waitForURL(URL_PATTERNS.LOGIN, { timeout: 15000 });
 
@@ -120,18 +129,18 @@ test.describe('Authentication Redirect Tests', () => {
   test.describe('已認證用戶重定向測試', () => {
     test.beforeEach(async ({ page }) => {
       // 設置已認證狀態
-      await page.evaluate(() => {
-        localStorage.setItem('auth-token', 'mock-token-12345');
-        localStorage.setItem('auth-user', JSON.stringify({
-          id: 1,
-          name: 'Test User',
-          email: 'test@example.com'
-        }));
-      });
+      await setAuthenticatedState(page, {
+        id: 1,
+        name: 'Test User',
+        email: 'test@example.com'
+      }, 'mock-token-12345');
     });
 
     test('已認證訪問首頁應重定向到探索頁面', async ({ page }) => {
       await nav.navigateToUrl(BASE_URL);
+
+      // 等待 ProtectedRoute 檢查完成
+      await waitForProtectedRouteCheck(page);
 
       // 等待重定向到探索頁面
       await page.waitForURL(URL_PATTERNS.DISCOVER, { timeout: 15000 });
@@ -145,21 +154,25 @@ test.describe('Authentication Redirect Tests', () => {
     test('已認證用戶可以直接存取所有受保護頁面', async ({ page }) => {
       // 測試探索頁面
       await nav.navigateToUrl(`${BASE_URL}/(tabs)/discover`);
+      await waitForProtectedRouteCheck(page);
       expect(await nav.verifyUrl(URL_PATTERNS.DISCOVER)).toBe(true);
       expect(await nav.verifyPageContent(PAGE_TEST_IDS.DISCOVER_CONTAINER)).toBe(true);
 
       // 測試配對頁面
       await nav.navigateToUrl(`${BASE_URL}/(tabs)/matches`);
+      await waitForProtectedRouteCheck(page);
       expect(await nav.verifyUrl(URL_PATTERNS.MATCHES)).toBe(true);
       expect(await nav.verifyPageContent(PAGE_TEST_IDS.MATCHES_CONTAINER)).toBe(true);
 
       // 測試訊息頁面
       await nav.navigateToUrl(`${BASE_URL}/(tabs)/messages`);
+      await waitForProtectedRouteCheck(page);
       expect(await nav.verifyUrl(URL_PATTERNS.MESSAGES)).toBe(true);
       expect(await nav.verifyPageContent(PAGE_TEST_IDS.CHAT_LIST_CONTAINER)).toBe(true);
 
       // 測試個人檔案頁面
       await nav.navigateToUrl(`${BASE_URL}/(tabs)/profile`);
+      await waitForProtectedRouteCheck(page);
       expect(await nav.verifyUrl(URL_PATTERNS.PROFILE)).toBe(true);
       expect(await nav.verifyPageContent(PAGE_TEST_IDS.PROFILE_CONTAINER)).toBe(true);
     });
@@ -167,6 +180,7 @@ test.describe('Authentication Redirect Tests', () => {
     test('已認證用戶可以存取深層受保護頁面', async ({ page }) => {
       // 測試聊天頁面
       await nav.navigateToUrl(`${BASE_URL}/chat/123`);
+      await waitForProtectedRouteCheck(page);
       expect(await nav.verifyUrl(URL_PATTERNS.CHAT)).toBe(true);
 
       // 檢查是否到達聊天頁面或顯示錯誤狀態
@@ -212,18 +226,11 @@ test.describe('Authentication Redirect Tests', () => {
       expect(await nav.verifyPageContent(PAGE_TEST_IDS.LOGIN_FORM)).toBe(true);
 
       // 模擬登入成功 (實際應該填寫表單並提交)
-      await page.evaluate(() => {
-        // 模擬成功認證
-        localStorage.setItem('auth-token', 'new-auth-token');
-        localStorage.setItem('auth-user', JSON.stringify({
-          id: 2,
-          name: 'New User',
-          email: 'newuser@example.com'
-        }));
-
-        // 觸發認證狀態變化
-        window.dispatchEvent(new Event('storage'));
-      });
+      await setAuthenticatedState(page, {
+        id: 2,
+        name: 'New User',
+        email: 'newuser@example.com'
+      }, 'new-auth-token');
 
       // 手動導航到首頁以觸發重定向邏輯
       await nav.navigateToUrl(BASE_URL);
@@ -239,30 +246,25 @@ test.describe('Authentication Redirect Tests', () => {
 
     test('登出後應重定向到登入頁面', async ({ page }) => {
       // 從已認證狀態開始
-      await page.evaluate(() => {
-        localStorage.setItem('auth-token', 'existing-token');
-        localStorage.setItem('auth-user', JSON.stringify({
-          id: 3,
-          name: 'Existing User',
-          email: 'existing@example.com'
-        }));
-      });
+      await setAuthenticatedState(page, {
+        id: 3,
+        name: 'Existing User',
+        email: 'existing@example.com'
+      }, 'existing-token');
 
       // 導航到個人檔案頁面
       await nav.navigateToUrl(`${BASE_URL}/(tabs)/profile`);
+      await waitForProtectedRouteCheck(page);
       expect(await nav.verifyPageContent(PAGE_TEST_IDS.PROFILE_CONTAINER)).toBe(true);
 
       // 模擬登出
-      await page.evaluate(() => {
-        localStorage.removeItem('auth-token');
-        localStorage.removeItem('auth-user');
-
-        // 觸發認證狀態變化
-        window.dispatchEvent(new Event('storage'));
-      });
+      await clearAuthenticatedState(page);
 
       // 嘗試存取受保護頁面
       await nav.navigateToUrl(`${BASE_URL}/(tabs)/discover`);
+
+      // 等待 ProtectedRoute 檢查完成
+      await waitForProtectedRouteCheck(page);
 
       // 等待重定向到登入頁面
       await page.waitForURL(URL_PATTERNS.LOGIN, { timeout: 15000 });
@@ -278,16 +280,27 @@ test.describe('Authentication Redirect Tests', () => {
     test('無效認證令牌應觸發重定向', async ({ page }) => {
       // 設置無效的認證狀態
       await page.evaluate(() => {
-        localStorage.setItem('auth-token', 'invalid-expired-token');
-        localStorage.setItem('auth-user', JSON.stringify({
-          id: 4,
-          name: 'Expired User',
-          email: 'expired@example.com'
-        }));
+        // 設置無效的 Zustand 格式 (但仍使用無效令牌)
+        const expiredAuthStorage = {
+          state: {
+            user: {
+              id: 4,
+              name: 'Expired User',
+              email: 'expired@example.com'
+            },
+            token: 'invalid-expired-token',
+            isAuthenticated: true
+          },
+          version: 0
+        };
+        localStorage.setItem('auth-storage', JSON.stringify(expiredAuthStorage));
       });
 
       // 嘗試訪問受保護頁面
       await nav.navigateToUrl(`${BASE_URL}/(tabs)/discover`);
+
+      // 等待 ProtectedRoute 檢查完成
+      await waitForProtectedRouteCheck(page);
 
       // 根據應用程式的實作，可能會：
       // 1. 重定向到登入頁面
@@ -310,12 +323,14 @@ test.describe('Authentication Redirect Tests', () => {
     test('部分損壞的認證資料應被清理', async ({ page }) => {
       // 設置部分損壞的認證狀態
       await page.evaluate(() => {
-        localStorage.setItem('auth-token', 'valid-token');
-        localStorage.setItem('auth-user', 'invalid-json-data');
+        localStorage.setItem('auth-storage', 'invalid-json-data');
       });
 
       // 訪問首頁
       await nav.navigateToUrl(BASE_URL);
+
+      // 等待 ProtectedRoute 檢查完成
+      await waitForProtectedRouteCheck(page);
 
       await nav.waitForPageLoad();
 
@@ -333,8 +348,8 @@ test.describe('Authentication Redirect Tests', () => {
     test('認證檢查期間應顯示載入指示器', async ({ page }) => {
       // 清除認證狀態
       await page.context().clearCookies();
+      await clearAuthenticatedState(page);
       await page.evaluate(() => {
-        localStorage.clear();
         sessionStorage.clear();
       });
 

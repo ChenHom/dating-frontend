@@ -15,7 +15,7 @@ test.describe('Enhanced Login Flow', () => {
     });
   });
 
-  test('should complete full login flow and navigate to feed', async ({ page }) => {
+  test('should complete full login flow and navigate to discover', async ({ page }) => {
     console.log('🚀 Starting enhanced login flow test...');
     
     // Navigate to login page
@@ -43,12 +43,12 @@ test.describe('Enhanced Login Flow', () => {
     const responseData = await response.json();
     console.log('✅ Login API successful:', responseData.message);
     
-    // Wait for navigation to feed page
-    await page.waitForURL('**/feed', { timeout: 10000 });
-    console.log('🎉 Successfully navigated to feed page!');
-    
-    // Verify we're on the feed page
-    expect(page.url()).toContain('/feed');
+    // Wait for navigation to discover page
+    await page.waitForURL('**/discover', { timeout: 10000 });
+    console.log('🎉 Successfully navigated to discover page!');
+
+    // Verify we're on the discover page
+    expect(page.url()).toContain('/discover');
     
     // Verify auth state is persisted
     const authStorage = await page.evaluate(() => {

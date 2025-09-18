@@ -69,7 +69,7 @@ export class FeedPage extends BasePage {
    * 導航到配對頁面
    */
   async navigateToFeed(): Promise<void> {
-    await this.goto('/(tabs)/feed');
+    await this.goto('/(tabs)/discover');
     await this.waitForPageLoad();
   }
 
@@ -387,6 +387,6 @@ export class FeedPage extends BasePage {
    * 驗證配對頁面 URL
    */
   async verifyFeedPageURL(): Promise<void> {
-    await this.verifyURL(/\/(tabs\/)?feed$/);
+    await this.verifyURL(/\/(tabs\/)?discover$/);
   }
 }

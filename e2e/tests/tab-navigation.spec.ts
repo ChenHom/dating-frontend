@@ -6,7 +6,7 @@
  */
 
 import { test, expect } from '@playwright/test';
-import { NavigationHelpers, URL_PATTERNS, PAGE_TEST_IDS } from '../utils/navigation-helpers';
+import { NavigationHelpers, URL_PATTERNS, PAGE_TEST_IDS, setAuthenticatedState, waitForProtectedRouteCheck } from '../utils/navigation-helpers';
 
 const BASE_URL = 'http://localhost:8083';
 
@@ -53,20 +53,21 @@ test.describe('Tab Navigation Tests', () => {
     nav = new NavigationHelpers(page);
 
     // 設置已認證狀態
-    await page.evaluate(() => {
-      localStorage.setItem('auth-token', 'tab-test-token');
-      localStorage.setItem('auth-user', JSON.stringify({
-        id: 1,
-        name: 'Tab Test User',
-        email: 'tabtest@example.com'
-      }));
-    });
+    await setAuthenticatedState(page, {
+      id: 1,
+      name: 'Tab Test User',
+      email: 'tabtest@example.com'
+    }, 'tab-test-token');
   });
 
   test.describe('基本 Tab 切換功能', () => {
     test('所有 Tab 都能正確切換', async ({ page }) => {
       // 從探索頁面開始
       await nav.navigateToUrl(TABS[0].url);
+
+      // 等待 ProtectedRoute 檢查完成
+      await waitForProtectedRouteCheck(page);
+
       expect(await nav.verifyUrl(TABS[0].pattern)).toBe(true);
       expect(await nav.verifyPageContent(TABS[0].testId)).toBe(true);
 
