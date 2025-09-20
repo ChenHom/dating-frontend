@@ -198,6 +198,7 @@ describe('RegisterScreen', () => {
       await waitFor(() => {
         expect(mockRegister).toHaveBeenCalledWith({
           name: 'John Doe',
+          display_name: 'John Doe',
           email: 'john@example.com',
           password: 'password123',
           password_confirmation: 'password123',

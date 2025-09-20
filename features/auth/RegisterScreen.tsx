@@ -102,8 +102,11 @@ export const RegisterScreen: React.FC = () => {
     }
 
     try {
+      const trimmedName = name.trim();
+
       await register({
-        name: name.trim(),
+        name: trimmedName,
+        display_name: trimmedName,
         email: email.trim(),
         password: password,
         password_confirmation: confirmPassword,

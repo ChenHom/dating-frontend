@@ -43,9 +43,15 @@ export interface LoginRequest {
 
 export interface RegisterRequest {
   name: string;
+  display_name?: string;
   email: string;
   password: string;
   password_confirmation: string;
+  gender?: 'M' | 'F' | 'O';
+  birthdate?: string;
+  city?: string;
+  bio?: string;
+  tags?: string[];
 }
 
 // Feed & Matching Types

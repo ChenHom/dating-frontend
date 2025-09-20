@@ -54,6 +54,7 @@ describe('Authentication Integration', () => {
       // Act
       await useAuthStore.getState().register({
         name: 'John Doe',
+        display_name: 'John Doe',
         email: 'john@example.com',
         password: 'password123',
         password_confirmation: 'password123',
@@ -77,6 +78,7 @@ describe('Authentication Integration', () => {
       // Act
       await useAuthStore.getState().register({
         name: 'John Doe',
+        display_name: 'John Doe',
         email: 'existing@example.com',
         password: 'password123',
         password_confirmation: 'password123',

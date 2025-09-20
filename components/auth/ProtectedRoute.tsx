@@ -30,7 +30,9 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
   const isInProtectedRoute = PROTECTED_SEGMENTS.has(currentSegment as string);
   const isInAuthRoute = AUTH_SEGMENTS.has(currentSegment as string);
 
-  if (isLoading || !isNavigationReady) {
+  const shouldShowLoadingState = !isNavigationReady || (isLoading && isInProtectedRoute);
+
+  if (shouldShowLoadingState) {
     return (
       fallback || (
         <View style={styles.loadingContainer} testID="auth-loading">

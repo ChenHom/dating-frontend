@@ -115,6 +115,7 @@ describe('ApiClient', () => {
       // Arrange
       const registerData: RegisterRequest = {
         name: 'New User',
+        display_name: 'New User',
         email: 'newuser@example.com',
         password: 'password123',
         password_confirmation: 'password123',

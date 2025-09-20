@@ -134,7 +134,7 @@ export const MatchesScreen: React.FC = () => {
       <Text style={styles.emptyText}>開始探索並喜歡其他用戶來建立配對！</Text>
       <TouchableOpacity
         style={styles.exploreButton}
-        onPress={() => router.push('/explore')}
+        onPress={() => router.push('/discover')}
       >
         <Text style={styles.exploreButtonText}>開始探索</Text>
       </TouchableOpacity>
