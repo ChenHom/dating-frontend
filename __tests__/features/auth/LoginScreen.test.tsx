@@ -154,7 +154,7 @@ describe('LoginScreen', () => {
 
       render(<LoginScreen />);
       
-      expect(mockPush).toHaveBeenCalledWith('/(tabs)/feed');
+      expect(mockPush).toHaveBeenCalledWith('/(tabs)/discover');
     });
 
     test('should clear errors when user starts typing', () => {

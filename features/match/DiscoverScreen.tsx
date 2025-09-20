@@ -18,6 +18,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { SwipeCard, SwipeCardRef } from './components/SwipeCard';
 import { useFeedStore } from '@/stores/feed';
 import { useMatchStore } from '@/stores/match';
+import { useAuthStore } from '@/stores/auth';
 
 export const DiscoverScreen: React.FC = () => {
   const swipeRef = useRef<SwipeCardRef>(null);
@@ -34,6 +35,8 @@ export const DiscoverScreen: React.FC = () => {
     hasMoreCards,
   } = useFeedStore();
 
+  const { isAuthenticated } = useAuthStore();
+
   const {
     dailyLikes,
     likeLimit,
@@ -43,12 +46,13 @@ export const DiscoverScreen: React.FC = () => {
   } = useMatchStore();
 
   useEffect(() => {
-    // Load initial feed data
-    loadFeed();
+    if (!isAuthenticated) {
+      return;
+    }
 
-    // Check for daily like reset
+    loadFeed();
     checkAndResetDailyLikes();
-  }, []);
+  }, [isAuthenticated, loadFeed, checkAndResetDailyLikes]);
 
   // Handle new match navigation
   useEffect(() => {
@@ -67,7 +71,7 @@ export const DiscoverScreen: React.FC = () => {
   }, [newMatch]);
 
   const handleLike = async (userId: number) => {
-    if (isLiking || isPassing) return;
+    if (!isAuthenticated || isLiking || isPassing) return;
 
     setIsLiking(true);
     try {
@@ -81,7 +85,7 @@ export const DiscoverScreen: React.FC = () => {
   };
 
   const handlePass = async (userId: number) => {
-    if (isLiking || isPassing) return;
+    if (!isAuthenticated || isLiking || isPassing) return;
 
     setIsPassing(true);
     try {
@@ -104,10 +108,18 @@ export const DiscoverScreen: React.FC = () => {
       Alert.alert('每日限制', '已達到每日點讚限制，請明天再試！');
       return;
     }
+    if (!isAuthenticated) {
+      Alert.alert('需要登入', '請先登入後再進行點讚');
+      return;
+    }
     swipeRef.current?.swipeRight();
   };
 
   const handleManualPass = () => {
+    if (!isAuthenticated) {
+      Alert.alert('需要登入', '請先登入後再繼續探索');
+      return;
+    }
     swipeRef.current?.swipeLeft();
   };
 

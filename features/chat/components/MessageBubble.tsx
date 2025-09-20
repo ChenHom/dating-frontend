@@ -6,7 +6,8 @@
 import React from 'react';
 import { View, Text, StyleSheet, Image } from 'react-native';
 import dayjs from 'dayjs';
-import { Message, PendingMessage } from '@/stores/chat';
+import { Message, PendingMessage, MessageStatus, useChatStore } from '@/stores/chat';
+import { MessageStatusIcon } from './MessageStatusIndicator';
 
 interface MessageBubbleProps {
   message: Message | (PendingMessage & { id?: number; sender?: any });
@@ -21,6 +22,8 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
   showAvatar = true,
   testID = 'message-bubble',
 }) => {
+  const { getMessageState } = useChatStore();
+
   const isMessage = 'id' in message && message.id;
   const isPending = 'status' in message && message.status;
 
@@ -28,20 +31,28 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
   const sentAt = 'sent_at' in message ? message.sent_at : message.created_at || '';
   const sender = 'sender' in message ? message.sender : undefined;
 
-  const renderMessageStatus = () => {
-    if (!isFromCurrentUser || !isPending) return null;
-
-    const pendingMsg = message as PendingMessage;
-    switch (pendingMsg.status) {
-      case 'sending':
-        return <Text style={styles.messageStatus}>⏳</Text>;
-      case 'sent':
-        return <Text style={styles.messageStatus}>✓</Text>;
-      case 'failed':
-        return <Text style={styles.messageStatus}>❌</Text>;
-      default:
-        return null;
+  // 獲取訊息狀態
+  const getMessageStatus = (): MessageStatus => {
+    if (isPending) {
+      // 對於待處理訊息，使用 PendingMessage 的狀態
+      const pendingMsg = message as PendingMessage;
+      return pendingMsg.status as MessageStatus;
+    } else if (isMessage) {
+      // 對於已發送訊息，從 messageStates 獲取狀態
+      const messageState = getMessageState(message.id.toString());
+      return messageState?.status || 'sent';
     }
+    return 'sent';
+  };
+
+  const getMessageError = (): string | undefined => {
+    if (isPending) {
+      return (message as PendingMessage).error;
+    } else if (isMessage) {
+      const messageState = getMessageState(message.id.toString());
+      return messageState?.error;
+    }
+    return undefined;
   };
 
   return (
@@ -86,12 +97,18 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
           >
             {dayjs(sentAt).format('HH:mm')}
           </Text>
-          {renderMessageStatus()}
+
+          <MessageStatusIcon
+            status={getMessageStatus()}
+            isFromCurrentUser={isFromCurrentUser}
+            error={getMessageError()}
+            testID={`${testID}-status`}
+          />
         </View>
 
-        {isPending && (message as PendingMessage).error && (
+        {getMessageError() && (
           <Text style={styles.errorText} testID={`${testID}-error`}>
-            {(message as PendingMessage).error}
+            {getMessageError()}
           </Text>
         )}
       </View>

@@ -262,7 +262,7 @@ export const SimpleChatListScreen: React.FC = () => {
       <TouchableOpacity 
         style={styles.newChatButton}
         testID="new-chat-button"
-        onPress={() => router.push('/(tabs)/feed')}
+        onPress={() => router.push('/(tabs)/discover')}
       >
         <Text style={styles.newChatButtonText}>💬</Text>
       </TouchableOpacity>

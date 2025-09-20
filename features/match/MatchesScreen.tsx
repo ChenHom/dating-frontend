@@ -19,6 +19,7 @@ import {
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useMatchStore } from '@/stores/match';
+import { useAuthStore } from '@/stores/auth';
 import { Match } from '@/lib/types';
 import { format, formatDistanceToNow } from 'date-fns';
 import { zhTW } from 'date-fns/locale';
@@ -32,18 +33,28 @@ export const MatchesScreen: React.FC = () => {
     openMatch,
     clearError,
   } = useMatchStore();
+  const { isAuthenticated } = useAuthStore();
 
   useEffect(() => {
-    loadMatches();
-  }, []);
+    if (isAuthenticated) {
+      loadMatches();
+    }
+  }, [isAuthenticated, loadMatches]);
 
   const handleRefresh = () => {
+    if (!isAuthenticated) {
+      return;
+    }
     clearError();
     loadMatches();
   };
 
   const handleMatchPress = async (match: Match) => {
     try {
+      if (!isAuthenticated) {
+        Alert.alert('需要登入', '請先登入以查看配對。');
+        return;
+      }
       if (!match.is_opened) {
         await openMatch(match.id);
       }

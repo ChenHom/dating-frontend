@@ -13,8 +13,10 @@ import {
   GameEndedEvent
 } from './types';
 
-// Configure Pusher for Laravel Echo
-window.Pusher = Pusher;
+// Configure Pusher for Laravel Echo (Platform-safe)
+if (typeof window !== 'undefined') {
+  window.Pusher = Pusher;
+}
 
 export interface EchoServiceConfig {
   wsHost: string;
@@ -25,6 +27,9 @@ export interface EchoServiceConfig {
 
 export interface EchoEventMap {
   'message.new': (event: MessageNewEvent) => void;
+  'game.invitation.sent': (event: any) => void;
+  'game.invitation.accepted': (event: any) => void;
+  'game.invitation.declined': (event: any) => void;
   'game.started': (event: GameStartEvent) => void;
   'game.move': (event: any) => void;
   'game.ended': (event: GameEndedEvent) => void;
@@ -156,6 +161,22 @@ export class EchoService {
       channel.listen('MessageSent', (event: MessageNewEvent) => {
         console.log('New message received:', event);
         this.emit('message.new', event);
+      });
+
+      // Listen for game invitation events
+      channel.listen('GameInvitationSent', (event: any) => {
+        console.log('Game invitation sent:', event);
+        this.emit('game.invitation.sent', event);
+      });
+
+      channel.listen('GameInvitationAccepted', (event: any) => {
+        console.log('Game invitation accepted:', event);
+        this.emit('game.invitation.accepted', event);
+      });
+
+      channel.listen('GameInvitationDeclined', (event: any) => {
+        console.log('Game invitation declined:', event);
+        this.emit('game.invitation.declined', event);
       });
 
       // Listen for game events

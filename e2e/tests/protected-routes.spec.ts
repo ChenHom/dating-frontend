@@ -349,7 +349,7 @@ test.describe('Protected Routes Tests', () => {
         sessionStorage.clear();
       });
 
-      // 創建多個頁面同時訪問不同的受保護路由
+      // 建立多個頁面同時訪問不同的受保護路由
       const page2 = await context.newPage();
       const nav2 = new NavigationHelpers(page2);
 

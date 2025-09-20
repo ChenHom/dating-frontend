@@ -6,6 +6,7 @@
 import { create } from 'zustand';
 import { FeedUser, LikeResponse } from '@/lib/types';
 import { apiClient } from '@/services/api/client';
+import { useAuthStore } from './auth';
 
 interface FeedState {
   users: FeedUser[];
@@ -31,8 +32,21 @@ export const useFeedStore = create<FeedState>()((set, get) => ({
   hasMoreUsers: true,
 
   loadFeed: async () => {
+    const { isAuthenticated, token } = useAuthStore.getState();
+
+    if (!isAuthenticated || !token) {
+      set({
+        users: [],
+        currentIndex: 0,
+        isLoading: false,
+        hasMoreUsers: false,
+        error: null,
+      });
+      return;
+    }
+
     set({ isLoading: true, error: null });
-    
+
     try {
       const users = await apiClient.getUserFeed();
       set({

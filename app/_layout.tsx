@@ -7,6 +7,7 @@ import 'react-native-reanimated';
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { ProtectedRoute } from '../components/auth/ProtectedRoute';
 import { useAuthErrorHandler } from '../hooks/useAuthErrorHandler';
+import { NotificationProvider } from '../providers/NotificationProvider';
 
 export default function RootLayout() {
   const colorScheme = useColorScheme();
@@ -24,36 +25,38 @@ export default function RootLayout() {
 
   return (
     <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-      <ProtectedRoute>
-        <Stack>
-          <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-          <Stack.Screen
-            name="chat/[id]"
-            options={{
-              title: 'Chat',
-              headerShown: false,
-            }}
-          />
-          <Stack.Screen 
-            name="profile/edit" 
-            options={{ 
-              headerShown: false,
-              presentation: 'modal' 
-            }} 
-          />
-          <Stack.Screen 
-            name="settings" 
-            options={{ 
-              headerShown: false,
-              presentation: 'modal' 
-            }} 
-          />
-          <Stack.Screen name="login" options={{ headerShown: false }} />
-          <Stack.Screen name="register" options={{ headerShown: false }} />
-          <Stack.Screen name="+not-found" />
-        </Stack>
-      </ProtectedRoute>
-      <StatusBar style="auto" />
+      <NotificationProvider>
+        <ProtectedRoute>
+          <Stack>
+            <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+            <Stack.Screen
+              name="chat/[id]"
+              options={{
+                title: 'Chat',
+                headerShown: false,
+              }}
+            />
+            <Stack.Screen
+              name="profile/edit"
+              options={{
+                headerShown: false,
+                presentation: 'modal'
+              }}
+            />
+            <Stack.Screen
+              name="settings"
+              options={{
+                headerShown: false,
+                presentation: 'modal'
+              }}
+            />
+            <Stack.Screen name="login" options={{ headerShown: false }} />
+            <Stack.Screen name="register" options={{ headerShown: false }} />
+            <Stack.Screen name="+not-found" />
+          </Stack>
+        </ProtectedRoute>
+        <StatusBar style="auto" />
+      </NotificationProvider>
     </ThemeProvider>
   );
 }

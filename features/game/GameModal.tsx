@@ -17,8 +17,16 @@ import { Ionicons } from '@expo/vector-icons';
 import { useGameStore, GameChoice as GameChoiceType } from '@/stores/game';
 import { useAuthStore } from '@/stores/auth';
 import { GameChoice } from './components/GameChoice';
+import { HandGestureAnimation } from './components/HandGestureAnimation';
+import { GameCountdown } from './components/GameCountdown';
+import { GameProgressBar } from './components/GameProgressBar';
+import { OpponentIndicator } from './components/OpponentIndicator';
+import { GameSoundManager, useGameSounds } from './components/GameSoundManager';
 import { GameTimer } from './components/GameTimer';
 import { GameResult } from './components/GameResult';
+import { EnhancedGameResult } from './components/EnhancedGameResult';
+import { VictoryCelebration } from './components/VictoryCelebration';
+import { RoundReplay } from './components/RoundReplay';
 import { GameInvite } from './components/GameInvite';
 
 interface GameModalProps {
@@ -37,6 +45,18 @@ export const GameModal: React.FC<GameModalProps> = ({
   testID = 'game-modal',
 }) => {
   const [localSelectedChoice, setLocalSelectedChoice] = useState<GameChoiceType | null>(null);
+  const [showEnhancedUI, setShowEnhancedUI] = useState(true);
+  const [showVictoryCelebration, setShowVictoryCelebration] = useState(false);
+  const [showRoundReplay, setShowRoundReplay] = useState(false);
+
+  // 使用遊戲音效 hook
+  const {
+    playSound,
+    playCountdownSequence,
+    playRoundResult,
+    playGameResult,
+    playTimeWarning,
+  } = useGameSounds();
 
   const {
     currentGame,
@@ -83,11 +103,16 @@ export const GameModal: React.FC<GameModalProps> = ({
       return;
     }
 
+    // 播放選擇音效
+    await playSound('choice_select');
+
     setLocalSelectedChoice(choice);
     setSelectedChoice(choice);
 
     try {
       await makeMove(choice);
+      // 播放確認音效
+      await playSound('choice_confirm');
     } catch (error) {
       Alert.alert('選擇失敗', '請重新選擇');
       setLocalSelectedChoice(null);
@@ -172,6 +197,52 @@ export const GameModal: React.FC<GameModalProps> = ({
 
   const opponentChoice = getOpponentChoice();
 
+  // 監聽時間警告
+  useEffect(() => {
+    if (roundTimeLeft <= 5 && roundTimeLeft > 0 && currentGame?.state === 'in_progress') {
+      playTimeWarning(roundTimeLeft);
+    }
+  }, [roundTimeLeft]);
+
+  // 監聽遊戲開始
+  useEffect(() => {
+    if (currentGame?.state === 'in_progress' && currentGame.current_round === 1) {
+      playSound('opponent_join');
+    }
+  }, [currentGame?.state]);
+
+  // 監聽遊戲結束 - 顯示慶祝動畫
+  useEffect(() => {
+    if (currentGame?.state === 'completed' && currentGame.winner_id === user?.id) {
+      setShowVictoryCelebration(true);
+    }
+  }, [currentGame?.state, currentGame?.winner_id]);
+
+  // 獲取回合結果數組
+  const getRoundResults = () => {
+    if (!currentGame || !user) return [];
+
+    return currentGame.rounds.map(round => {
+      if (!round.player1_choice || !round.player2_choice) return null;
+
+      const isInitiator = currentGame.initiator_id === user.id;
+      const myChoice = isInitiator ? round.player1_choice : round.player2_choice;
+      const oppChoice = isInitiator ? round.player2_choice : round.player1_choice;
+
+      if (myChoice === oppChoice) return 'draw';
+
+      const winConditions = {
+        rock: 'scissors',
+        paper: 'rock',
+        scissors: 'paper',
+      };
+
+      return winConditions[myChoice] === oppChoice ? 'win' : 'lose';
+    });
+  };
+
+  const roundResults = getRoundResults();
+
   return (
     <Modal
       visible={isGameModalVisible}
@@ -180,7 +251,12 @@ export const GameModal: React.FC<GameModalProps> = ({
       onRequestClose={handleClose}
       testID={testID}
     >
-      <View style={styles.container}>
+      <GameSoundManager
+        enabled={true}
+        volume={0.8}
+        hapticEnabled={true}
+      >
+        <View style={styles.container}>
         {/* Header */}
         <View style={styles.header}>
           <TouchableOpacity
@@ -218,55 +294,52 @@ export const GameModal: React.FC<GameModalProps> = ({
 
           {currentGame && !isGameCompleted && (
             <>
-              {/* Game status */}
-              <View style={styles.gameStatus}>
-                <Text style={styles.gameTitle}>
-                  第 {currentGame.current_round} 回合 / 共 {currentGame.best_of} 回合
-                </Text>
+              {/* Enhanced Game Progress Bar */}
+              <GameProgressBar
+                currentRound={currentGame.current_round}
+                totalRounds={currentGame.best_of}
+                playerScore={currentGame.final_scores[user?.id || 0] || 0}
+                opponentScore={currentGame.final_scores[participantId] || 0}
+                playerName="你"
+                opponentName={opponentName}
+                roundResults={roundResults}
+                testID={`${testID}-progress`}
+              />
 
-                <View style={styles.scoreDisplay}>
-                  <Text style={styles.scoreText}>
-                    你: {currentGame.final_scores[user?.id || 0] || 0} |
-                    對手: {currentGame.final_scores[participantId] || 0}
-                  </Text>
-                </View>
-              </View>
-
-              {/* Timers */}
+              {/* Enhanced Timers */}
               <View style={styles.timersContainer}>
-                <GameTimer
+                <GameCountdown
                   timeLeft={roundTimeLeft}
                   totalTime={10}
                   title="回合時間"
                   type="round"
-                  testID={`${testID}-round-timer`}
+                  isActive={currentGame.state === 'in_progress'}
+                  testID={`${testID}-round-countdown`}
                 />
 
-                <GameTimer
+                <GameCountdown
                   timeLeft={gameTimeLeft}
                   totalTime={60}
                   title="總時間"
                   type="game"
-                  testID={`${testID}-game-timer`}
+                  isActive={currentGame.state === 'in_progress'}
+                  testID={`${testID}-game-countdown`}
                 />
               </View>
 
-              {/* Opponent choice display */}
-              {opponentChoice && (
-                <View style={styles.opponentChoiceContainer}>
-                  <Text style={styles.opponentChoiceTitle}>對手選擇:</Text>
-                  <GameChoice
-                    choice={opponentChoice}
-                    isSelected={true}
-                    onSelect={() => {}}
-                    disabled={true}
-                    size="large"
-                    testID={`${testID}-opponent-choice`}
-                  />
-                </View>
-              )}
+              {/* Enhanced Opponent Indicator */}
+              <OpponentIndicator
+                opponentName={opponentName}
+                opponentAvatarUrl={opponentAvatarUrl}
+                isConnected={true}
+                isThinking={!opponentChoice && !localSelectedChoice}
+                hasChoiceMade={!!opponentChoice}
+                choice={opponentChoice}
+                timeLeft={roundTimeLeft}
+                testID={`${testID}-opponent`}
+              />
 
-              {/* Your choices */}
+              {/* Enhanced Your choices */}
               <View style={styles.choicesContainer}>
                 <Text style={styles.choicesTitle}>
                   {localSelectedChoice ? '你的選擇:' : '請選擇:'}
@@ -274,15 +347,28 @@ export const GameModal: React.FC<GameModalProps> = ({
 
                 <View style={styles.choicesRow}>
                   {(['rock', 'paper', 'scissors'] as GameChoiceType[]).map((choice) => (
-                    <GameChoice
-                      key={choice}
-                      choice={choice}
-                      isSelected={localSelectedChoice === choice}
-                      onSelect={handleChoiceSelect}
-                      disabled={isSubmittingChoice || !!localSelectedChoice}
-                      size="large"
-                      testID={`${testID}-choice-${choice}`}
-                    />
+                    showEnhancedUI ? (
+                      <HandGestureAnimation
+                        key={choice}
+                        choice={choice}
+                        isSelected={localSelectedChoice === choice}
+                        onSelect={handleChoiceSelect}
+                        disabled={isSubmittingChoice || !!localSelectedChoice}
+                        size="xlarge"
+                        showAnimation={!localSelectedChoice}
+                        testID={`${testID}-gesture-${choice}`}
+                      />
+                    ) : (
+                      <GameChoice
+                        key={choice}
+                        choice={choice}
+                        isSelected={localSelectedChoice === choice}
+                        onSelect={handleChoiceSelect}
+                        disabled={isSubmittingChoice || !!localSelectedChoice}
+                        size="large"
+                        testID={`${testID}-choice-${choice}`}
+                      />
+                    )
                   ))}
                 </View>
 
@@ -291,11 +377,48 @@ export const GameModal: React.FC<GameModalProps> = ({
                     提交選擇中...
                   </Text>
                 )}
+
+                {/* UI 切換按鈕 */}
+                <TouchableOpacity
+                  style={styles.uiToggle}
+                  onPress={() => setShowEnhancedUI(!showEnhancedUI)}
+                  testID={`${testID}-ui-toggle`}
+                >
+                  <Text style={styles.uiToggleText}>
+                    {showEnhancedUI ? '簡單模式' : '增強模式'}
+                  </Text>
+                </TouchableOpacity>
               </View>
             </>
           )}
 
-          {currentGame && isGameCompleted && (
+          {currentGame && isGameCompleted && showEnhancedUI && (
+            <>
+              <EnhancedGameResult
+                gameSession={currentGame}
+                currentUserId={user?.id || 0}
+                isVisible={true}
+                onAnimationComplete={() => {
+                  // 動畫完成後的回調
+                }}
+                testID={`${testID}-enhanced-result`}
+              />
+
+              {/* 回合回顧按鈕 */}
+              <View style={styles.replayControls}>
+                <TouchableOpacity
+                  style={styles.replayButton}
+                  onPress={() => setShowRoundReplay(true)}
+                  testID={`${testID}-show-replay`}
+                >
+                  <Ionicons name="play-circle" size={20} color="#fff" />
+                  <Text style={styles.replayButtonText}>回合回顧</Text>
+                </TouchableOpacity>
+              </View>
+            </>
+          )}
+
+          {currentGame && isGameCompleted && !showEnhancedUI && (
             <GameResult
               gameSession={currentGame}
               currentUserId={user?.id || 0}
@@ -304,7 +427,35 @@ export const GameModal: React.FC<GameModalProps> = ({
             />
           )}
         </View>
-      </View>
+        </View>
+
+        {/* 勝利慶祝動畫 */}
+        <VictoryCelebration
+          isVisible={showVictoryCelebration}
+          isWinner={currentGame?.winner_id === user?.id}
+          onComplete={() => setShowVictoryCelebration(false)}
+          testID={`${testID}-victory`}
+        />
+      </GameSoundManager>
+
+      {/* 回合回顧模態 */}
+      {showRoundReplay && currentGame && (
+        <Modal
+          visible={showRoundReplay}
+          animationType="slide"
+          presentationStyle="pageSheet"
+          onRequestClose={() => setShowRoundReplay(false)}
+          testID={`${testID}-replay-modal`}
+        >
+          <RoundReplay
+            gameSession={currentGame}
+            currentUserId={user?.id || 0}
+            isVisible={showRoundReplay}
+            onClose={() => setShowRoundReplay(false)}
+            testID={`${testID}-replay`}
+          />
+        </Modal>
+      )}
     </Modal>
   );
 };
@@ -418,6 +569,43 @@ const styles = StyleSheet.create({
     color: '#6b7280',
     marginTop: 16,
     fontStyle: 'italic',
+  },
+  uiToggle: {
+    marginTop: 16,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    backgroundColor: '#f3f4f6',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#d1d5db',
+  },
+  uiToggleText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#6b7280',
+    textAlign: 'center',
+  },
+  replayControls: {
+    alignItems: 'center',
+    marginTop: 16,
+  },
+  replayButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    backgroundColor: '#3b82f6',
+    borderRadius: 8,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  replayButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#fff',
+    marginLeft: 6,
   },
 });
 

@@ -10,6 +10,7 @@ import {
   User 
 } from '@/lib/types';
 import { apiClient } from '@/services/api/client';
+import { useAuthStore } from './auth';
 
 interface MatchState {
   // Data
@@ -47,6 +48,12 @@ export const useMatchStore = create<MatchState>((set, get) => ({
 
   // Like a user
   likeUser: async (userId: number) => {
+    const { isAuthenticated, token } = useAuthStore.getState();
+
+    if (!isAuthenticated || !token) {
+      throw new Error('尚未登入，無法進行點讚');
+    }
+
     const state = get();
     
     // Check daily limit
@@ -80,6 +87,12 @@ export const useMatchStore = create<MatchState>((set, get) => ({
 
   // Pass on a user
   passUser: async (userId: number) => {
+    const { isAuthenticated, token } = useAuthStore.getState();
+
+    if (!isAuthenticated || !token) {
+      throw new Error('尚未登入，無法進行操作');
+    }
+
     set({ isLoading: true, error: null });
     
     try {
@@ -99,6 +112,17 @@ export const useMatchStore = create<MatchState>((set, get) => ({
 
   // Load all matches
   loadMatches: async () => {
+    const { isAuthenticated, token } = useAuthStore.getState();
+
+    if (!isAuthenticated || !token) {
+      set({
+        matches: [],
+        isLoading: false,
+        error: null,
+      });
+      return;
+    }
+
     set({ isLoading: true, error: null });
     
     try {
@@ -118,6 +142,12 @@ export const useMatchStore = create<MatchState>((set, get) => ({
 
   // Open/mark a match as viewed
   openMatch: async (matchId: number) => {
+    const { isAuthenticated, token } = useAuthStore.getState();
+
+    if (!isAuthenticated || !token) {
+      throw new Error('尚未登入，無法開啟配對');
+    }
+
     set({ isLoading: true, error: null });
     
     try {

@@ -48,3 +48,5 @@ debug-*.png
 *.png
 
 app-example
+.env
+.env.*

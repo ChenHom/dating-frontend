@@ -24,11 +24,12 @@ import { MessageBubble } from './components/MessageBubble';
 import { MessageInput } from './components/MessageInput';
 import { TypingIndicator } from './components/TypingIndicator';
 import { ConnectionIndicator } from './components/ConnectionIndicator';
+import { GameInviteMessage, GameInviteMessageData } from './components/GameInviteMessage';
 import { GameButton } from '../game/components/GameButton';
 import { GameModal } from '../game/GameModal';
 import { WebSocketConnectionState } from '@/services/websocket/types';
 
-type MessageItem = Message | (PendingMessage & { isPending: true });
+type MessageItem = Message | (PendingMessage & { isPending: true }) | GameInviteMessageData;
 
 export const ChatScreen: React.FC = () => {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -58,7 +59,7 @@ export const ChatScreen: React.FC = () => {
   } = useChatStore();
 
   const { user, token } = useAuthStore();
-  const { showGameModal } = useGameStore();
+  const { showGameModal, sendGameInvite, acceptGameInvitation, declineGameInvitation } = useGameStore();
 
   // Get current conversation and messages
   const currentConversation = conversations.find(conv => conv.id === conversationId);
@@ -165,10 +166,23 @@ export const ChatScreen: React.FC = () => {
     router.back();
   }, []);
 
-  // Handle game launch
-  const handleLaunchGame = useCallback(() => {
-    showGameModal();
-  }, [showGameModal]);
+  // Handle game launch (send invite)
+  const handleLaunchGame = useCallback(async () => {
+    try {
+      // Get participant info
+      const participant = currentConversation?.participants.find(p => p.id !== user?.id);
+      if (!participant) {
+        Alert.alert('錯誤', '找不到對話參與者');
+        return;
+      }
+
+      // Send game invitation
+      await sendGameInvite(conversationId, participant.id);
+      Alert.alert('邀請已發送', `已向 ${participant.profile?.display_name || participant.name} 發送遊戲邀請`);
+    } catch (error) {
+      Alert.alert('錯誤', '無法發送遊戲邀請，請稍後再試');
+    }
+  }, [conversationId, currentConversation, user?.id, sendGameInvite]);
 
   // Handle conversation actions menu
   const handleShowMenu = useCallback(() => {
@@ -197,8 +211,44 @@ export const ChatScreen: React.FC = () => {
     );
   }, [handleRefresh, handleBack, handleLaunchGame]);
 
+  // Handle game invite actions
+  const handleAcceptGameInvite = useCallback(async (gameSessionId: number) => {
+    try {
+      await acceptGameInvitation(gameSessionId.toString());
+      Alert.alert('邀請已接受', '遊戲即將開始！');
+    } catch (error) {
+      Alert.alert('錯誤', '無法接受遊戲邀請，請稍後再試');
+    }
+  }, [acceptGameInvitation]);
+
+  const handleDeclineGameInvite = useCallback(async (gameSessionId: number) => {
+    try {
+      await declineGameInvitation(gameSessionId.toString());
+    } catch (error) {
+      Alert.alert('錯誤', '無法拒絕遊戲邀請');
+    }
+  }, [declineGameInvitation]);
+
   // Render message item
   const renderMessage: ListRenderItem<MessageItem> = useCallback(({ item }) => {
+    // Check if this is a game invite message
+    if ('type' in item && item.type === 'game_invite') {
+      const gameInviteItem = item as GameInviteMessageData;
+      const isFromCurrentUser = gameInviteItem.sender_id === user?.id;
+
+      return (
+        <GameInviteMessage
+          message={gameInviteItem}
+          isFromCurrentUser={isFromCurrentUser}
+          onAccept={handleAcceptGameInvite}
+          onDecline={handleDeclineGameInvite}
+          currentUserId={user?.id}
+          testID={`game-invite-${gameInviteItem.id}`}
+        />
+      );
+    }
+
+    // Handle regular messages and pending messages
     const isFromCurrentUser = 'sender_id' in item
       ? item.sender_id === user?.id
       : true; // Pending messages are always from current user
@@ -222,13 +272,13 @@ export const ChatScreen: React.FC = () => {
     return (
       <TouchableOpacity onPress={handlePress} disabled={!('isPending' in item && item.status === 'failed')}>
         <MessageBubble
-          message={item}
+          message={item as Message | (PendingMessage & { isPending: true })}
           isFromCurrentUser={isFromCurrentUser}
           testID={`message-${('id' in item ? item.id : item.client_nonce)}`}
         />
       </TouchableOpacity>
     );
-  }, [user?.id, handleRetryMessage]);
+  }, [user?.id, handleRetryMessage, handleAcceptGameInvite, handleDeclineGameInvite]);
 
   // Loading state
   if (isLoadingMessages[conversationId] && allMessages.length === 0) {

@@ -18,6 +18,7 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { router } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 import { useAuthStore } from '@/stores/auth';
 
 interface ChangePasswordForm {
@@ -145,7 +146,6 @@ export const SettingsScreen: React.FC = () => {
           style: 'destructive',
           onPress: () => {
             logout();
-            router.replace('/login');
           },
         },
       ]

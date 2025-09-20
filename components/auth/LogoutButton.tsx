@@ -5,7 +5,6 @@
 
 import React from 'react';
 import { TouchableOpacity, Text, StyleSheet, Alert } from 'react-native';
-import { router } from 'expo-router';
 import { useAuthStore } from '../../stores/auth';
 
 interface LogoutButtonProps {
@@ -22,11 +21,10 @@ export const LogoutButton: React.FC<LogoutButtonProps> = ({
   const { logout } = useAuthStore();
 
   const handleLogout = () => {
-    const performLogout = async () => {
+    const performLogout = () => {
       try {
-        await logout();
+        logout();
         console.log('🚪 User logged out successfully');
-        router.replace('/login');
       } catch (error) {
         console.error('Logout error:', error);
         Alert.alert('Error', 'Failed to logout. Please try again.');

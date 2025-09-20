@@ -153,7 +153,7 @@ import { TEST_USERS, TEST_CREDENTIALS } from '../fixtures/test-data';
 // 使用預定義用戶
 await loginPage.login(TEST_CREDENTIALS.valid.email, TEST_CREDENTIALS.valid.password);
 
-// 或創建隨機用戶
+// 或建立隨機用戶
 const randomUser = TestDataFactory.createUser({
   name: 'Custom Test User'
 });
@@ -308,13 +308,13 @@ npm run e2e:install
 ## 擴展測試
 
 ### 添加新頁面對象
-1. 在 `pages/` 目錄創建新的頁面類
+1. 在 `pages/` 目錄建立新的頁面類
 2. 繼承 `BasePage`
 3. 實現 `isPageLoaded()` 方法
 4. 添加頁面特定的方法
 
 ### 添加新測試
-1. 在 `tests/` 目錄創建新的 `.spec.ts` 文件
+1. 在 `tests/` 目錄建立新的 `.spec.ts` 文件
 2. 導入需要的頁面對象
 3. 編寫測試用例
 4. 運行測試驗證

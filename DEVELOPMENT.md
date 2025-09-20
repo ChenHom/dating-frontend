@@ -75,6 +75,26 @@ docker-compose logs -f app
 npm start
 ```
 
+### 提供公開測試連線（LocalTunnel）
+
+1. 確認後端 API（預設 8000）與 Reverb WebSocket（預設 6001/8090）已在本機可用。
+2. 啟動隧道：
+   ```bash
+   # 同時開啟 API 與 WebSocket 隧道
+   npm run tunnel
+
+   # 僅開啟其中一個服務
+   npm run tunnel:api
+   npm run tunnel:ws
+   ```
+3. 終端機會顯示公開網址，例如 `https://<subdomain>.loca.lt`。請更新 `.env`：
+   - `EXPO_PUBLIC_API_URL=https://<subdomain>.loca.lt/api`
+   - `EXPO_PUBLIC_REVERB_SCHEME=wss`
+   - `EXPO_PUBLIC_REVERB_HOST=<subdomain>.loca.lt`
+   - `EXPO_PUBLIC_REVERB_PORT=443`
+4. 將公開網址提供給外部測試者，測試完成後使用 `Ctrl+C` 關閉隧道。
+5. 需要固定子網域時，可在啟動隧道前設定 `LOCALTUNNEL_API_SUBDOMAIN` 或 `LOCALTUNNEL_WS_SUBDOMAIN` 環境變數。
+
 ### 開發工作流程
 
 1. **建立功能分支**

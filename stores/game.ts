@@ -5,6 +5,7 @@
 
 import { create } from 'zustand';
 import { echoService } from '@/services/websocket/EchoService';
+import { notificationManager } from '@/services/notifications/NotificationManager';
 
 export type GameChoice = 'rock' | 'paper' | 'scissors';
 
@@ -72,11 +73,16 @@ interface GameStoreState {
   gameError: string | null;
 
   // Actions
+  sendGameInvite: (conversationId: number, participantId: number) => Promise<GameInvitation>;
   startGame: (conversationId: number, participantId: number) => Promise<void>;
   acceptGameInvitation: (invitationId: string) => Promise<void>;
   declineGameInvitation: (invitationId: string) => Promise<void>;
   makeMove: (choice: GameChoice) => Promise<void>;
   forfeitGame: () => Promise<void>;
+
+  // WebSocket management
+  initializeWebSocketListeners: () => void;
+  cleanupWebSocketListeners: () => void;
 
   // UI actions
   showGameModal: () => void;
@@ -84,6 +90,9 @@ interface GameStoreState {
   setSelectedChoice: (choice: GameChoice | null) => void;
 
   // WebSocket event handlers
+  handleGameInviteReceived: (event: any) => void;
+  handleGameInviteAccepted: (event: any) => void;
+  handleGameInviteDeclined: (event: any) => void;
   handleGameStarted: (event: any) => void;
   handleGameMove: (event: any) => void;
   handleGameEnded: (event: any) => void;
@@ -118,6 +127,78 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
   isLoadingGame: false,
   isCreatingGame: false,
   gameError: null,
+
+  // Initialize WebSocket event listeners
+  initializeWebSocketListeners: () => {
+    // Listen for game invitation events from EchoService
+    echoService.on('game.invitation.sent', get().handleGameInviteReceived);
+    echoService.on('game.invitation.accepted', get().handleGameInviteAccepted);
+    echoService.on('game.invitation.declined', get().handleGameInviteDeclined);
+    echoService.on('game.started', get().handleGameStarted);
+    echoService.on('game.move', get().handleGameMove);
+    echoService.on('game.ended', get().handleGameEnded);
+    echoService.on('game.timeout', get().handleGameTimeout);
+
+    console.log('Game WebSocket listeners initialized');
+  },
+
+  // Clean up WebSocket event listeners
+  cleanupWebSocketListeners: () => {
+    echoService.off('game.invitation.sent', get().handleGameInviteReceived);
+    echoService.off('game.invitation.accepted', get().handleGameInviteAccepted);
+    echoService.off('game.invitation.declined', get().handleGameInviteDeclined);
+    echoService.off('game.started', get().handleGameStarted);
+    echoService.off('game.move', get().handleGameMove);
+    echoService.off('game.ended', get().handleGameEnded);
+    echoService.off('game.timeout', get().handleGameTimeout);
+
+    console.log('Game WebSocket listeners cleaned up');
+  },
+
+  // Game invitation system
+  sendGameInvite: async (conversationId: number, participantId: number) => {
+    set({ isCreatingGame: true, gameError: null });
+
+    try {
+      // Use the new invitation API
+      const response = await fetch(`${API_BASE_URL}/game-invitation/conversations/${conversationId}/games/invite`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${process.env.EXPO_PUBLIC_AUTH_TOKEN}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          message: '邀請你玩剪刀石頭布！',
+          best_of: 3,
+          round_time_limit_sec: 10,
+          expires_in_minutes: 5,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      const invitation = data.data as GameInvitation;
+
+      // Add to sent invitations
+      set(state => ({
+        sentInvitations: [invitation, ...state.sentInvitations],
+        isCreatingGame: false,
+      }));
+
+      return invitation;
+
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Failed to send game invitation';
+      set({
+        gameError: errorMessage,
+        isCreatingGame: false,
+      });
+      throw error;
+    }
+  },
 
   // Game flow actions
   startGame: async (conversationId: number, participantId: number) => {
@@ -167,43 +248,51 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
 
   acceptGameInvitation: async (invitationId: string) => {
     try {
-      const response = await fetch(`${API_BASE_URL}/games/accept`, {
-        method: 'POST',
+      const response = await fetch(`${API_BASE_URL}/game-invitation/game-invitations/${invitationId}/accept`, {
+        method: 'PUT',
         headers: {
           'Authorization': `Bearer ${process.env.EXPO_PUBLIC_AUTH_TOKEN}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          invitation_id: invitationId,
-        }),
       });
 
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
 
-      // Remove from pending invitations
+      const data = await response.json();
+      const gameSession = data.data.game_session;
+
+      // Remove from pending invitations and start game
       set(state => ({
-        pendingInvitations: state.pendingInvitations.filter(inv => inv.id !== invitationId)
+        pendingInvitations: state.pendingInvitations.filter(inv => inv.id !== invitationId),
+        currentGame: gameSession,
+        isGameModalVisible: true,
+        roundTimeLeft: 10,
+        gameTimeLeft: 60,
       }));
+
+      // Start timers
+      get().updateRoundTimer();
+      get().updateGameTimer();
 
     } catch (error) {
       console.error('Failed to accept game invitation:', error);
+      set({
+        gameError: error instanceof Error ? error.message : 'Failed to accept game invitation'
+      });
       throw error;
     }
   },
 
   declineGameInvitation: async (invitationId: string) => {
     try {
-      const response = await fetch(`${API_BASE_URL}/games/decline`, {
-        method: 'POST',
+      const response = await fetch(`${API_BASE_URL}/game-invitation/game-invitations/${invitationId}/decline`, {
+        method: 'PUT',
         headers: {
           'Authorization': `Bearer ${process.env.EXPO_PUBLIC_AUTH_TOKEN}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          invitation_id: invitationId,
-        }),
       });
 
       if (!response.ok) {
@@ -217,6 +306,9 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
 
     } catch (error) {
       console.error('Failed to decline game invitation:', error);
+      set({
+        gameError: error instanceof Error ? error.message : 'Failed to decline game invitation'
+      });
       throw error;
     }
   },
@@ -238,15 +330,16 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
 
       if (!success) {
         // Fallback to HTTP
-        const response = await fetch(`${API_BASE_URL}/games/${currentGame.id}/move`, {
+        const response = await fetch(`${API_BASE_URL}/sessions/${currentGame.id}/moves`, {
           method: 'POST',
           headers: {
             'Authorization': `Bearer ${process.env.EXPO_PUBLIC_AUTH_TOKEN}`,
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
-            round_number: currentGame.current_round,
-            choice,
+            round: currentGame.current_round,
+            move: choice,
+            client_nonce: `move-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
           }),
         });
 
@@ -270,8 +363,8 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
     if (!currentGame) return;
 
     try {
-      const response = await fetch(`${API_BASE_URL}/games/${currentGame.id}/forfeit`, {
-        method: 'POST',
+      const response = await fetch(`${API_BASE_URL}/sessions/${currentGame.id}/abandon`, {
+        method: 'PUT',
         headers: {
           'Authorization': `Bearer ${process.env.EXPO_PUBLIC_AUTH_TOKEN}`,
           'Content-Type': 'application/json',
@@ -311,18 +404,86 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
   setSelectedChoice: (choice: GameChoice | null) => set({ selectedChoice: choice }),
 
   // WebSocket event handlers
+  handleGameInviteReceived: (event: any) => {
+    // New GameInvitationSent event structure
+    const invitation: GameInvitation = {
+      id: event.invitation_id?.toString() || event.id?.toString(),
+      conversation_id: event.conversation_id,
+      from_user_id: event.from_user_id,
+      to_user_id: event.to_user_id,
+      expires_at: event.expires_at,
+      created_at: event.created_at,
+    };
+
+    set(state => ({
+      pendingInvitations: [invitation, ...state.pendingInvitations]
+    }));
+
+    // 通過通知管理器處理 WebSocket 通知顯示
+    notificationManager.handleWebSocketNotification({
+      id: invitation.id,
+      type: 'game_invite',
+      title: '🎮 遊戲邀請！',
+      body: `${event.from_user_name || '有人'} 邀請你玩剪刀石頭布！`,
+      data: {
+        invitation,
+        conversationId: invitation.conversation_id,
+        senderId: invitation.from_user_id,
+      },
+      conversationId: invitation.conversation_id,
+      senderId: invitation.from_user_id,
+    });
+
+    console.log('Game invitation received via WebSocket:', invitation);
+  },
+
+  handleGameInviteAccepted: (event: any) => {
+    // New GameInvitationAccepted event - remove from sent invitations
+    set(state => ({
+      sentInvitations: state.sentInvitations.filter(inv =>
+        inv.id !== event.invitation_id?.toString()
+      )
+    }));
+
+    console.log('Game invitation accepted:', event);
+  },
+
+  handleGameInviteDeclined: (event: any) => {
+    // New GameInvitationDeclined event - remove from sent invitations
+    set(state => ({
+      sentInvitations: state.sentInvitations.filter(inv =>
+        inv.id !== event.invitation_id?.toString()
+      )
+    }));
+
+    console.log('Game invitation declined:', event);
+  },
+
   handleGameStarted: (event: any) => {
-    set({
-      currentGame: event,
+    // Backend GameStarted event when game is accepted
+    const gameSession = event.gameSession || event;
+
+    set(state => ({
+      // Remove corresponding invitation from both pending and sent lists
+      pendingInvitations: state.pendingInvitations.filter(inv =>
+        inv.conversation_id !== gameSession.conversation_id
+      ),
+      sentInvitations: state.sentInvitations.filter(inv =>
+        inv.conversation_id !== gameSession.conversation_id
+      ),
+      // Set current game
+      currentGame: gameSession,
       isGameModalVisible: true,
-      roundTimeLeft: 10,
+      roundTimeLeft: gameSession.round_time_limit_sec || 10,
       gameTimeLeft: 60,
       selectedChoice: null,
       isSubmittingChoice: false,
-    });
+    }));
 
     get().updateRoundTimer();
     get().updateGameTimer();
+
+    console.log('Game started:', gameSession);
   },
 
   handleGameMove: (event: any) => {

@@ -7,6 +7,9 @@ import { create } from 'zustand';
 import { WebSocketManager } from '../services/websocket/WebSocketManager';
 import { EchoService, echoService } from '../services/websocket/EchoService';
 import { WebSocketConnectionState, MessageNewEvent } from '../services/websocket/types';
+import { chatNotificationIntegrator } from '../services/notifications/ChatNotificationIntegrator';
+import { SearchResult } from '../features/chat/components/MessageSearchBar';
+import { ReactionData } from '../features/chat/components/MessageReactions';
 
 export interface Message {
   id: number;
@@ -51,6 +54,15 @@ export interface PendingMessage {
   sent_at: string;
   status: 'sending' | 'sent' | 'failed';
   error?: string | undefined;
+  reply_to_message_id?: string; // 新增回覆關係字段
+}
+
+export type MessageStatus = 'sending' | 'sent' | 'delivered' | 'read' | 'failed';
+
+export interface MessageState {
+  status: MessageStatus;
+  timestamp: number;
+  error?: string;
 }
 
 interface ChatState {
@@ -72,7 +84,22 @@ interface ChatState {
   
   // Pending messages
   pendingMessages: { [conversationId: number]: PendingMessage[] };
-  
+
+  // Message states
+  messageStates: { [messageId: string]: MessageState };
+
+  // Search functionality
+  searchResults: SearchResult[];
+  searchQuery: string;
+  isSearching: boolean;
+
+  // Reply functionality
+  replyToMessage: Message | null;
+  replyRelations: { [messageId: string]: string }; // messageId -> originalMessageId
+
+  // Reaction functionality
+  messageReactions: { [messageId: string]: ReactionData[] };
+
   // Unread counts
   totalUnreadCount: number;
   
@@ -96,6 +123,28 @@ interface ChatState {
   updatePendingMessageStatus: (clientNonce: string, status: PendingMessage['status'], error?: string) => void;
   addPendingMessage: (message: PendingMessage) => void;
   removePendingMessage: (clientNonce: string) => void;
+
+  // Message state management
+  updateMessageState: (messageId: string, status: MessageStatus, error?: string) => void;
+  getMessageState: (messageId: string) => MessageState | null;
+  handleMessageDelivered: (messageId: string, userId: number) => void;
+  handleMessageRead: (messageId: string, userId: number) => void;
+
+  // Search functionality
+  searchMessages: (query: string) => Promise<SearchResult[]>;
+  clearSearchResults: () => void;
+
+  // Reply functionality
+  setReplyToMessage: (message: Message | null) => void;
+  sendReplyMessage: (conversationId: number, content: string, replyToMessageId: string) => Promise<void>;
+  getOriginalMessage: (messageId: string) => Message | null;
+
+  // Reaction functionality
+  addReaction: (messageId: string, emoji: string) => Promise<void>;
+  removeReaction: (messageId: string, emoji: string) => Promise<void>;
+  getMessageReactions: (messageId: string) => ReactionData[];
+  handleReactionAdded: (messageId: string, emoji: string, userId: number, userName: string) => void;
+  handleReactionRemoved: (messageId: string, emoji: string, userId: number) => void;
 }
 
 const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:8000/api';
@@ -113,6 +162,13 @@ export const useChatStore = create<ChatState>((set, get) => ({
   isLoadingMessages: {},
   messagesError: {},
   pendingMessages: {},
+  messageStates: {},
+  searchResults: [],
+  searchQuery: '',
+  isSearching: false,
+  replyToMessage: null,
+  replyRelations: {},
+  messageReactions: {},
   totalUnreadCount: 0,
 
   // Echo service initialization
@@ -138,7 +194,27 @@ export const useChatStore = create<ChatState>((set, get) => ({
         get().handleWebSocketMessage(event);
       });
 
+      echoService.on('message.delivered', (event) => {
+        get().handleMessageDelivered(event.message_id, event.user_id);
+      });
+
+      echoService.on('message.read', (event) => {
+        get().handleMessageRead(event.message_id, event.user_id);
+      });
+
       // Setup game event listeners
+      echoService.on('game.invite.received', (event) => {
+        get().handleGameEvent('game.invite.received', event);
+      });
+
+      echoService.on('game.invite.accepted', (event) => {
+        get().handleGameEvent('game.invite.accepted', event);
+      });
+
+      echoService.on('game.invite.declined', (event) => {
+        get().handleGameEvent('game.invite.declined', event);
+      });
+
       echoService.on('game.started', (event) => {
         get().handleGameEvent('game.started', event);
       });
@@ -160,6 +236,14 @@ export const useChatStore = create<ChatState>((set, get) => ({
       });
 
       await echoService.initialize(authToken);
+
+      // 初始化聊天通知整合器
+      try {
+        await chatNotificationIntegrator.initialize();
+      } catch (error) {
+        console.error('Failed to initialize chat notification integrator:', error);
+        // 不拋出錯誤，允許聊天功能繼續工作
+      }
 
     } catch (error) {
       console.error('Failed to initialize Echo service:', error);
@@ -320,6 +404,13 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
     set({ currentConversationId: conversationId });
 
+    // 更新聊天通知整合器的活躍對話
+    try {
+      chatNotificationIntegrator.setActiveConversation(conversationId);
+    } catch (error) {
+      console.error('Error setting active conversation in notification integrator:', error);
+    }
+
     // Subscribe to new conversation
     if (conversationId) {
       get().subscribeToConversation(conversationId);
@@ -405,14 +496,18 @@ export const useChatStore = create<ChatState>((set, get) => ({
       
       // Remove pending message and add real message
       get().removePendingMessage(clientNonce);
-      
+
       const { messages } = get();
       const existingMessages = messages[conversationId] || [];
-      
+
+      // Initialize message state for the new message
+      const newMessage = data.data;
+      get().updateMessageState(newMessage.id.toString(), 'sent');
+
       set({
         messages: {
           ...messages,
-          [conversationId]: [...existingMessages, data.data]
+          [conversationId]: [...existingMessages, newMessage]
         }
       });
 
@@ -447,10 +542,17 @@ export const useChatStore = create<ChatState>((set, get) => ({
         return sum + (conv.unread_count || 0);
       }, 0);
 
-      set({ 
+      set({
         conversations: updatedConversations,
-        totalUnreadCount 
+        totalUnreadCount
       });
+
+      // 通知聊天通知整合器標記為已讀
+      try {
+        chatNotificationIntegrator.markConversationAsRead(conversationId);
+      } catch (error) {
+        console.error('Error marking conversation as read in notification integrator:', error);
+      }
     } catch (error) {
       console.error('Failed to mark as read:', error);
     }
@@ -478,6 +580,12 @@ export const useChatStore = create<ChatState>((set, get) => ({
       case 'message.ack':
         // Message was acknowledged by server
         get().updatePendingMessageStatus(event.client_nonce, 'sent');
+
+        // If message ID is provided, initialize message state
+        if (event.message_id) {
+          get().updateMessageState(event.message_id.toString(), 'sent');
+        }
+
         setTimeout(() => {
           get().removePendingMessage(event.client_nonce);
         }, 1000); // Keep for 1 second to show "sent" status
@@ -495,11 +603,23 @@ export const useChatStore = create<ChatState>((set, get) => ({
         );
         
         if (!isDuplicate) {
+          // Initialize message state for new incoming message
+          const { messageStates } = get();
+          const newMessageStates = {
+            ...messageStates,
+            [event.id.toString()]: {
+              messageId: event.id.toString(),
+              status: 'delivered' as MessageStatus,
+              timestamp: Date.now(),
+            }
+          };
+
           set({
             messages: {
               ...messages,
               [conversationId]: [...existingMessages, event]
-            }
+            },
+            messageStates: newMessageStates
           });
 
           // Update conversation last message and unread count
@@ -518,10 +638,17 @@ export const useChatStore = create<ChatState>((set, get) => ({
             return sum + (conv.unread_count || 0);
           }, 0);
 
-          set({ 
+          set({
             conversations: updatedConversations,
-            totalUnreadCount 
+            totalUnreadCount
           });
+
+          // 整合聊天通知處理
+          try {
+            chatNotificationIntegrator.handleNewMessage(event);
+          } catch (error) {
+            console.error('Error handling chat notification:', error);
+          }
         }
         break;
 
@@ -541,6 +668,15 @@ export const useChatStore = create<ChatState>((set, get) => ({
     const gameStore = require('@/stores/game').useGameStore.getState();
 
     switch (eventType) {
+      case 'game.invite.received':
+        gameStore.handleGameInviteReceived(event);
+        break;
+      case 'game.invite.accepted':
+        gameStore.handleGameInviteAccepted(event);
+        break;
+      case 'game.invite.declined':
+        gameStore.handleGameInviteDeclined(event);
+        break;
       case 'game.started':
         gameStore.handleGameStarted(event);
         break;
@@ -614,5 +750,401 @@ export const useChatStore = create<ChatState>((set, get) => ({
     });
 
     set({ pendingMessages: updatedPendingMessages });
+  },
+
+  // Message state management
+  updateMessageState: (messageId: string, status: MessageStatus, error?: string) => {
+    const { messageStates } = get();
+
+    set({
+      messageStates: {
+        ...messageStates,
+        [messageId]: {
+          status,
+          timestamp: Date.now(),
+          error,
+        },
+      },
+    });
+  },
+
+  getMessageState: (messageId: string): MessageState | null => {
+    const { messageStates } = get();
+    return messageStates[messageId] || null;
+  },
+
+  handleMessageDelivered: (messageId: string, userId: number) => {
+    const currentUserId = get().echoService.getUserId();
+
+    // 只有當不是自己發送的訊息時才更新為已送達
+    if (userId !== currentUserId) {
+      get().updateMessageState(messageId, 'delivered');
+    }
+  },
+
+  handleMessageRead: (messageId: string, userId: number) => {
+    const currentUserId = get().echoService.getUserId();
+
+    // 只有當不是自己發送的訊息時才更新為已讀
+    if (userId !== currentUserId) {
+      get().updateMessageState(messageId, 'read');
+    }
+  },
+
+  // Search functionality
+  searchMessages: async (query: string): Promise<SearchResult[]> => {
+    const { messages, conversations } = get();
+
+    set({ isSearching: true, searchQuery: query });
+
+    try {
+      const results: SearchResult[] = [];
+      const normalizedQuery = query.toLowerCase().trim();
+
+      // 搜索所有對話中的訊息
+      Object.entries(messages).forEach(([conversationId, messageList]) => {
+        const conversation = conversations.find(c => c.id === parseInt(conversationId));
+
+        messageList.forEach(message => {
+          const content = message.content.toLowerCase();
+          const matchIndex = content.indexOf(normalizedQuery);
+
+          if (matchIndex !== -1) {
+            // 創建高亮內容
+            const originalContent = message.content;
+            const beforeMatch = originalContent.substring(0, matchIndex);
+            const match = originalContent.substring(matchIndex, matchIndex + query.length);
+            const afterMatch = originalContent.substring(matchIndex + query.length);
+            const highlightedContent = `${beforeMatch}<mark>${match}</mark>${afterMatch}`;
+
+            // 獲取發送者名稱
+            const senderName = message.sender.profile?.display_name || message.sender.name;
+
+            results.push({
+              messageId: message.id.toString(),
+              conversationId: message.conversation_id,
+              content: message.content,
+              highlightedContent,
+              senderName,
+              timestamp: message.sent_at || message.created_at,
+              matchIndex,
+              matchLength: query.length,
+            });
+          }
+        });
+      });
+
+      // 按時間降序排序（最新的在前）
+      results.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+
+      set({ searchResults: results, isSearching: false });
+      return results;
+    } catch (error) {
+      console.error('Search error:', error);
+      set({ searchResults: [], isSearching: false });
+      return [];
+    }
+  },
+
+  clearSearchResults: () => {
+    set({
+      searchResults: [],
+      searchQuery: '',
+      isSearching: false
+    });
+  },
+
+  // Reply functionality
+  setReplyToMessage: (message: Message | null) => {
+    set({ replyToMessage: message });
+  },
+
+  sendReplyMessage: async (conversationId: number, content: string, replyToMessageId: string): Promise<void> => {
+    const { echoService } = get();
+    const token = echoService.getAuthToken();
+
+    if (!token) {
+      throw new Error('User not authenticated');
+    }
+
+    const clientNonce = `${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
+    // 創建待處理訊息 (包含回覆關係)
+    const pendingMessage: PendingMessage = {
+      client_nonce: clientNonce,
+      conversation_id: conversationId,
+      content,
+      status: 'sending',
+      sent_at: new Date().toISOString(),
+      reply_to_message_id: replyToMessageId, // 新增回覆關係字段
+    };
+
+    // 添加到待處理訊息列表
+    get().addPendingMessage(pendingMessage);
+
+    try {
+      // 發送到伺服器
+      const response = await fetch(`${API_BASE_URL}/conversations/${conversationId}/messages`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+          'Accept': 'application/json',
+        },
+        body: JSON.stringify({
+          content,
+          client_nonce: clientNonce,
+          reply_to_message_id: replyToMessageId,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ message: 'Network error' }));
+        throw new Error(errorData.message || `HTTP ${response.status}`);
+      }
+
+      const messageData = await response.json();
+
+      // 儲存回覆關係
+      const { replyRelations } = get();
+      set({
+        replyRelations: {
+          ...replyRelations,
+          [messageData.id.toString()]: replyToMessageId,
+        },
+      });
+
+      // 初始化訊息狀態
+      get().updateMessageState(messageData.id.toString(), 'sent');
+
+      // 更新待處理訊息狀態為成功
+      get().updatePendingMessageStatus(clientNonce, 'sent');
+
+      // 清除回覆狀態
+      set({ replyToMessage: null });
+
+    } catch (error) {
+      console.error('Error sending reply message:', error);
+      // 更新待處理訊息狀態為失敗
+      get().updatePendingMessageStatus(clientNonce, 'failed', error instanceof Error ? error.message : 'Unknown error');
+      throw error;
+    }
+  },
+
+  getOriginalMessage: (messageId: string): Message | null => {
+    const { messages, replyRelations } = get();
+    const originalMessageId = replyRelations[messageId];
+
+    if (!originalMessageId) return null;
+
+    // 在所有對話中尋找原始訊息
+    for (const [conversationId, messageList] of Object.entries(messages)) {
+      const originalMessage = messageList.find(msg => msg.id.toString() === originalMessageId);
+      if (originalMessage) {
+        return originalMessage;
+      }
+    }
+
+    return null;
+  },
+
+  // Reaction functionality
+  addReaction: async (messageId: string, emoji: string): Promise<void> => {
+    const { echoService } = get();
+    const token = echoService.getAuthToken();
+    const currentUserId = echoService.getUserId();
+
+    if (!token || !currentUserId) {
+      throw new Error('User not authenticated');
+    }
+
+    try {
+      // 樂觀更新 - 先在本地添加反應
+      const { messageReactions } = get();
+      const reactions = messageReactions[messageId] || [];
+      const existingReaction = reactions.find(r => r.emoji === emoji);
+
+      if (existingReaction) {
+        // 如果反應已存在，檢查用戶是否已經反應過
+        if (existingReaction.hasCurrentUserReacted) {
+          // 用戶已經反應過這個表情，應該移除
+          return get().removeReaction(messageId, emoji);
+        } else {
+          // 添加用戶到現有反應
+          existingReaction.count++;
+          existingReaction.hasCurrentUserReacted = true;
+          existingReaction.users.push({
+            id: currentUserId,
+            name: 'You', // 簡化處理，實際應該獲取用戶名稱
+          });
+        }
+      } else {
+        // 創建新反應
+        reactions.push({
+          emoji,
+          count: 1,
+          hasCurrentUserReacted: true,
+          users: [{
+            id: currentUserId,
+            name: 'You',
+          }],
+        });
+      }
+
+      set({
+        messageReactions: {
+          ...messageReactions,
+          [messageId]: [...reactions],
+        },
+      });
+
+      // 發送到伺服器
+      const response = await fetch(`${API_BASE_URL}/messages/${messageId}/reactions`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+          'Accept': 'application/json',
+        },
+        body: JSON.stringify({ emoji }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+
+    } catch (error) {
+      console.error('Error adding reaction:', error);
+      // 恢復樂觀更新
+      // TODO: 實現錯誤恢復邏輯
+      throw error;
+    }
+  },
+
+  removeReaction: async (messageId: string, emoji: string): Promise<void> => {
+    const { echoService } = get();
+    const token = echoService.getAuthToken();
+    const currentUserId = echoService.getUserId();
+
+    if (!token || !currentUserId) {
+      throw new Error('User not authenticated');
+    }
+
+    try {
+      // 樂觀更新 - 先在本地移除反應
+      const { messageReactions } = get();
+      const reactions = messageReactions[messageId] || [];
+      const reactionIndex = reactions.findIndex(r => r.emoji === emoji);
+
+      if (reactionIndex !== -1) {
+        const reaction = reactions[reactionIndex];
+        if (reaction.hasCurrentUserReacted) {
+          reaction.count--;
+          reaction.hasCurrentUserReacted = false;
+          reaction.users = reaction.users.filter(u => u.id !== currentUserId);
+
+          // 如果反應數量為 0，移除整個反應
+          if (reaction.count === 0) {
+            reactions.splice(reactionIndex, 1);
+          }
+        }
+      }
+
+      set({
+        messageReactions: {
+          ...messageReactions,
+          [messageId]: [...reactions],
+        },
+      });
+
+      // 發送到伺服器
+      const response = await fetch(`${API_BASE_URL}/messages/${messageId}/reactions/${emoji}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Accept': 'application/json',
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+
+    } catch (error) {
+      console.error('Error removing reaction:', error);
+      // 恢復樂觀更新
+      // TODO: 實現錯誤恢復邏輯
+      throw error;
+    }
+  },
+
+  getMessageReactions: (messageId: string): ReactionData[] => {
+    const { messageReactions } = get();
+    return messageReactions[messageId] || [];
+  },
+
+  handleReactionAdded: (messageId: string, emoji: string, userId: number, userName: string) => {
+    const { messageReactions, echoService } = get();
+    const currentUserId = echoService.getUserId();
+    const reactions = messageReactions[messageId] || [];
+    const existingReaction = reactions.find(r => r.emoji === emoji);
+
+    if (existingReaction) {
+      // 添加用戶到現有反應
+      existingReaction.count++;
+      if (userId === currentUserId) {
+        existingReaction.hasCurrentUserReacted = true;
+      }
+      existingReaction.users.push({
+        id: userId,
+        name: userName,
+      });
+    } else {
+      // 創建新反應
+      reactions.push({
+        emoji,
+        count: 1,
+        hasCurrentUserReacted: userId === currentUserId,
+        users: [{
+          id: userId,
+          name: userName,
+        }],
+      });
+    }
+
+    set({
+      messageReactions: {
+        ...messageReactions,
+        [messageId]: [...reactions],
+      },
+    });
+  },
+
+  handleReactionRemoved: (messageId: string, emoji: string, userId: number) => {
+    const { messageReactions, echoService } = get();
+    const currentUserId = echoService.getUserId();
+    const reactions = messageReactions[messageId] || [];
+    const reactionIndex = reactions.findIndex(r => r.emoji === emoji);
+
+    if (reactionIndex !== -1) {
+      const reaction = reactions[reactionIndex];
+      reaction.count--;
+      if (userId === currentUserId) {
+        reaction.hasCurrentUserReacted = false;
+      }
+      reaction.users = reaction.users.filter(u => u.id !== userId);
+
+      // 如果反應數量為 0，移除整個反應
+      if (reaction.count === 0) {
+        reactions.splice(reactionIndex, 1);
+      }
+    }
+
+    set({
+      messageReactions: {
+        ...messageReactions,
+        [messageId]: [...reactions],
+      },
+    });
   },
 }));

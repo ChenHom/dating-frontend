@@ -49,7 +49,7 @@ export class APIMocks {
    * 初始化模擬數據
    */
   private initializeMockData(): void {
-    // 創建模擬用戶
+    // 建立模擬用戶
     this.mockUsers = [
       {
         id: 'user-1',
@@ -83,7 +83,7 @@ export class APIMocks {
       }
     ];
 
-    // 創建模擬對話
+    // 建立模擬對話
     this.mockConversations = [
       {
         id: 'conv-1',
@@ -99,7 +99,7 @@ export class APIMocks {
       }
     ];
 
-    // 創建模擬消息
+    // 建立模擬消息
     this.mockMessages = [
       {
         id: 'msg-1',
@@ -214,10 +214,10 @@ export class APIMocks {
     await this.page.route('**/likes/*', async (route: Route) => {
       const url = route.request().url();
       const userId = url.split('/').pop();
-      
+
       // 模擬配對（50% 機率）
       const isMatch = Math.random() > 0.5;
-      
+
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
@@ -269,9 +269,9 @@ export class APIMocks {
     await this.page.route('**/conversations/*/messages', async (route: Route) => {
       const url = route.request().url();
       const conversationId = url.split('/')[url.split('/').length - 2];
-      
+
       const messages = this.mockMessages.filter(m => m.conversationId === conversationId);
-      
+
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
@@ -288,7 +288,7 @@ export class APIMocks {
     await this.page.route('**/messages', async (route: Route) => {
       const request = route.request();
       const body = request.postDataJSON();
-      
+
       const newMessage: MockMessage = {
         id: `msg-${Date.now()}`,
         conversationId: body?.conversationId,
@@ -298,9 +298,9 @@ export class APIMocks {
         type: 'text',
         status: 'sent'
       };
-      
+
       this.mockMessages.push(newMessage);
-      
+
       await route.fulfill({
         status: 201,
         contentType: 'application/json',
@@ -333,11 +333,11 @@ export class APIMocks {
     await this.page.route('**/games/*/play', async (route: Route) => {
       const request = route.request();
       const body = request.postDataJSON();
-      
+
       const choices = ['rock', 'paper', 'scissors'];
       const opponentChoice = choices[Math.floor(Math.random() * choices.length)];
       const playerChoice = body?.choice;
-      
+
       let result = 'draw';
       if (playerChoice === 'rock' && opponentChoice === 'scissors' ||
           playerChoice === 'paper' && opponentChoice === 'rock' ||
@@ -346,7 +346,7 @@ export class APIMocks {
       } else if (playerChoice !== opponentChoice) {
         result = 'lose';
       }
-      
+
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
@@ -386,7 +386,7 @@ export class APIMocks {
     await this.page.route('**/conversations/*/gifts/send', async (route: Route) => {
       const request = route.request();
       const body = request.postDataJSON();
-      
+
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
@@ -410,7 +410,7 @@ export class APIMocks {
    * 模擬伺服器錯誤
    */
   async mockServerError(pattern: string | RegExp, status = 500): Promise<void> {
-    await this.page.route(pattern, route => 
+    await this.page.route(pattern, route =>
       route.fulfill({
         status,
         contentType: 'application/json',
@@ -433,7 +433,7 @@ export class APIMocks {
    * 模擬空回應
    */
   async mockEmptyResponse(pattern: string | RegExp): Promise<void> {
-    await this.page.route(pattern, route => 
+    await this.page.route(pattern, route =>
       route.fulfill({
         status: 200,
         contentType: 'application/json',

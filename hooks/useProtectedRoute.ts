@@ -46,8 +46,8 @@ export const useProtectedRoute = (options: UseProtectedRouteOptions = {}) => {
 
       // Redirect authenticated users away from auth routes
       if (isAuthenticated && isInPublicRoute) {
-        console.log('✅ Redirecting authenticated user to feed');
-        router.replace('/(tabs)/feed');
+        console.log('✅ Redirecting authenticated user to discover tab');
+        router.replace('/(tabs)/discover');
         return;
       }
     }

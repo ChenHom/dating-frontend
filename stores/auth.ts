@@ -127,6 +127,7 @@ export const useAuthStore = create<AuthState>()(
           localStorage.removeItem('auth-storage');
           console.log('💾 Auth storage cleared from localStorage');
         }
+
       },
 
       setUser: (user: User) => {

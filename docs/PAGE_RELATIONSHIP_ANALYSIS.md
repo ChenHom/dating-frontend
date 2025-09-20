@@ -39,7 +39,7 @@
 
 | 來源頁面 | 目標頁面 | 導航方法 | 條件 | 檔案位置 |
 |---------|---------|----------|------|----------|
-| `/` | `/(tabs)/feed` | `router.replace()` | 已認證 | `app/index.tsx:8` |
+| `/` | `/(tabs)/discover` | `Redirect` | 已認證 | `app/index.tsx:8` |
 | `/` | `/login` | `router.replace()` | 未認證 | `app/index.tsx:11` |
 | `/login` | `/register` | `router.push()` | 用戶點擊註冊 | `features/auth/LoginScreen.tsx:45` |
 | `/login` | `/(tabs)/discover` | 認證成功後自動 | 登入成功 | 認證邏輯處理 |

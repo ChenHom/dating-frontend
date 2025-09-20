@@ -3,12 +3,18 @@
  * 全域認證錯誤處理器，監聽並處理認證失效事件
  */
 
-import { useEffect } from 'react';
-import { router } from 'expo-router';
+import { useEffect, useRef } from 'react';
 import { useAuthStore } from '@/stores/auth';
 
 export const useAuthErrorHandler = () => {
   const { isAuthenticated, logout } = useAuthStore();
+  const hasHandledAuthError = useRef(false);
+
+  useEffect(() => {
+    if (isAuthenticated) {
+      hasHandledAuthError.current = false;
+    }
+  }, [isAuthenticated]);
 
   useEffect(() => {
     // 監聽未捕獲的 Promise 拒絕（通常是 API 錯誤）
@@ -26,19 +32,15 @@ export const useAuthErrorHandler = () => {
         event.preventDefault();
 
         // 如果用戶目前還在認證狀態，則登出
-        if (isAuthenticated) {
-          logout();
+        if (hasHandledAuthError.current) {
+          event.preventDefault();
+          return;
+        }
 
-          // 跳轉到登入頁面
-          try {
-            router.replace('/login');
-          } catch (navError) {
-            console.error('Navigation error during auth error handling:', navError);
-            // Web fallback
-            if (typeof window !== 'undefined') {
-              window.location.href = '/login';
-            }
-          }
+        hasHandledAuthError.current = true;
+
+        if (useAuthStore.getState().isAuthenticated) {
+          logout();
         }
       }
     };
@@ -52,17 +54,15 @@ export const useAuthErrorHandler = () => {
 
         console.warn('🔐 Global authentication error detected');
 
-        if (isAuthenticated) {
-          logout();
+        if (hasHandledAuthError.current) {
+          event.preventDefault?.();
+          return;
+        }
 
-          try {
-            router.replace('/login');
-          } catch (navError) {
-            console.error('Navigation error during global error handling:', navError);
-            if (typeof window !== 'undefined') {
-              window.location.href = '/login';
-            }
-          }
+        hasHandledAuthError.current = true;
+
+        if (useAuthStore.getState().isAuthenticated) {
+          logout();
         }
       }
     };
