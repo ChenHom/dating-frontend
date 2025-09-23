@@ -245,8 +245,8 @@ const styles = StyleSheet.create({
   },
   content: {
     flex: 1,
-    paddingTop: 10, // 減少上方間距
-    paddingHorizontal: 10, // 添加水平間距
+    paddingTop: 15, // 增加上方間距避免覆蓋
+    paddingHorizontal: 10,
     marginBottom: 120, // 為底部按鈕留出空間
   },
   errorContainer: {

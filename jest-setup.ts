@@ -16,7 +16,7 @@ jest.mock('expo-constants', () => ({
   default: {
     expoConfig: {},
     ExecutionEnvironment: {
-      Standalone: 'STANDALONE', 
+      Standalone: 'STANDALONE',
       StoreClient: 'STORE_CLIENT',
     },
   },
@@ -80,19 +80,27 @@ jest.mock('./services/api/client', () => ({
 }));
 
 // Mock react-native-deck-swiper
-jest.mock('react-native-deck-swiper', () => {
+// Mock SwipeCard component
+jest.mock('@/features/match/components/SwipeCard', () => {
   const React = require('react');
-  return React.forwardRef((props: any, ref: any) => {
-    const MockSwiper = require('react-native').View;
-    return React.createElement(MockSwiper, { ...props, ref });
-  });
+  return {
+    SwipeCard: React.forwardRef((props: any, ref: any) => {
+      const MockSwipeCard = require('react-native').View;
+      return React.createElement(MockSwipeCard, {
+        ...props,
+        testID: props.testID || 'deck-swiper',
+        ref,
+      });
+    }),
+    SwipeCardRef: {},
+  };
 });
 
 // Silence specific warnings in tests
 const originalConsoleWarn = console.warn;
 console.warn = (message: string) => {
   if (
-    message.includes('deprecated') || 
+    message.includes('deprecated') ||
     message.includes('componentWillReceiveProps') ||
     message.includes('ReactDOM.render is no longer supported')
   ) {
