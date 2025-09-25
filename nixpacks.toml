@@ -1,0 +1,8 @@
+[phases.build]
+  cmd = "npm run export:web"
+
+[phases.start]
+  cmd = "npm run start:production"
+
+[variables]
+  NPM_CONFIG_PRODUCTION = "false"
