@@ -3,7 +3,7 @@
 
 [deploy]
   startCommand = "npm run start:production"
-  healthcheckPath = "/favicon.ico"
+  healthcheckPath = "/"
 
 [env]
   # 設定 API 端點指向同專案的後端服務

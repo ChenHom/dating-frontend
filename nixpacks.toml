@@ -1,8 +1,10 @@
 [phases.build]
-  cmd = "npm run export:web"
+  cmd = "echo 'Starting build process...' && echo 'Node version:' && node --version && echo 'NPM version:' && npm --version && echo 'Current directory:' && pwd && echo 'Directory contents:' && ls -la && echo 'Checking if app.json exists:' && cat app.json || echo 'app.json not found' && echo 'Installing expo CLI...' && npm install -g @expo/cli && echo 'Running expo export...' && EXPO_NO_TELEMETRY=1 npx expo export --platform web --output-dir dist --clear && echo 'Build completed. Checking if dist was created:' && if [ -d 'dist' ]; then echo 'Dist directory created successfully'; ls -la dist/; echo 'Dist files count:'; find dist -type f | wc -l; else echo 'ERROR: Dist directory was not created'; exit 1; fi"
 
 [phases.start]
   cmd = "npm run start:production"
 
 [variables]
   NPM_CONFIG_PRODUCTION = "false"
+  NODE_ENV = "production"
+  EXPO_NO_TELEMETRY = "1"
