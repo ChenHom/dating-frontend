@@ -3,8 +3,8 @@
 
 [deploy]
   startCommand = "npm run start:production"
-  healthcheckPath = "/"
+  healthcheckPath = "/favicon.ico"
 
 [env]
   # 設定 API 端點指向同專案的後端服務
-  EXPO_PUBLIC_API_URL = { reference = "PUBLIC_DOMAIN", fallback = "http://localhost:8000" }
+  EXPO_PUBLIC_API_URL = { reference = "RAILWAY_PUBLIC_DOMAIN", fallback = "http://localhost:8000" }
