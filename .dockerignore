@@ -30,7 +30,7 @@ expo-env.d.ts
 .react-native
 
 # 構建產物
-dist
+# dist # 允許預構建的 dist 目錄用於 Railway 部署
 build
 web-build
 

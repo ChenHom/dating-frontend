@@ -1,5 +1,5 @@
 [phases.build]
-  cmd = "echo 'Using pre-built dist directory' && ls -la dist/ || echo 'Pre-built dist not found, attempting build...' && npm install && npm install -g @expo/cli && expo export --platform web --output-dir dist"
+  cmd = "echo 'Using pre-built optimized dist directory' && ls -la dist/ || echo 'Pre-built dist not found, attempting optimized build...' && npm install && npm install -g @expo/cli && npm run build:web:optimized"
 
 [phases.start]
   cmd = "npm run start:production"
@@ -9,3 +9,4 @@
   NODE_ENV = "production"
   EXPO_NO_TELEMETRY = "1"
   NODE_OPTIONS = "--max-old-space-size=4096"
+  EXPO_PLATFORM = "web"

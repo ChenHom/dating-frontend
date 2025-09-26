@@ -20,7 +20,29 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useChatStore, Message, PendingMessage } from '@/stores/chat';
 import { useAuthStore } from '@/stores/auth';
-import { useGameStore } from '@/stores/game';
+  retryButtonText: {
+    color: '#ffffff',
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  // Fallback styles
+  modalFallback: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+  },
+  fallbackText: {
+    marginTop: 12,
+    color: '#ffffff',
+    fontSize: 16,
+  },
+  inlineFallback: {
+    padding: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+}); { useGameStore } from '@/stores/game';
 import { MessageBubble } from './components/MessageBubble';
 import { MessageInput } from './components/MessageInput';
 import { TypingIndicator } from './components/TypingIndicator';
@@ -28,12 +50,20 @@ import { ConnectionIndicator } from './components/ConnectionIndicator';
 import { GameInviteMessage, GameInviteMessageData } from './components/GameInviteMessage';
 import { GameButton } from '../game/components/GameButton';
 import { WebSocketConnectionState } from '@/services/websocket/types';
-import { ErrorBoundary } from '@/components/ErrorBoundary';
+import { LazyWrapper } from '@/components/LazyWrapper';
 
 // 細分的動態導入 - 只在需要時加載
-const GameModal = lazy(() => import('../game/GameModal'));
+const GameModal = lazy(() => 
+  import('../game/GameModal').then(module => ({ 
+    default: module.GameModal 
+  }))
+);
 
-const GiftManager = lazy(() => import('../gifts/GiftManager'));
+const GiftManager = lazy(() => 
+  import('../gifts/GiftManager').then(module => ({ 
+    default: module.GiftManager 
+  }))
+);
 
 // 遊戲相關組件的 fallback
 const GameModalFallback = () => (
@@ -58,7 +88,6 @@ export const ChatScreen: React.FC = () => {
   const flatListRef = useRef<FlatList>(null);
   const [isTyping, setIsTyping] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
-  const [showGiftManager, setShowGiftManager] = useState(false);
 
   // Store hooks
   const {
@@ -80,7 +109,6 @@ export const ChatScreen: React.FC = () => {
   } = useChatStore();
 
   const { user, token } = useAuthStore();
-
   const { showGameModal, sendGameInvite, acceptGameInvitation, declineGameInvitation } = useGameStore();
 
   // Get current conversation and messages
@@ -105,25 +133,47 @@ export const ChatScreen: React.FC = () => {
   useEffect(() => {
     const initialize = async () => {
       if (!token) {
-        console.log('No token available for Echo initialization');
+        Alert.alert('錯誤', '請先登入');
+        router.back();
         return;
       }
 
       try {
-        await initializeEcho(token);
-        await loadConversations();
-        await loadMessages(conversationId, 1);
+        // Initialize Echo service if not already initialized
+        if (!echoService.isConnected()) {
+          await initializeEcho(token);
+        }
+
+        // Load conversations if not loaded
+        if (conversations.length === 0) {
+          await loadConversations();
+        }
+
+        // Set current conversation
         setCurrentConversation(conversationId);
 
-        // Mark messages as read when entering chat
-        markAsRead(conversationId);
+        // Load messages for current conversation
+        await loadMessages(conversationId);
+
+        // Mark conversation as read
+        if (currentConversation && currentConversation.unread_count > 0) {
+          await markAsRead(conversationId);
+        }
       } catch (error) {
         console.error('Failed to initialize chat:', error);
+        Alert.alert('錯誤', '無法連接聊天服務');
       }
     };
 
     initialize();
-  }, [conversationId, token, initializeEcho, loadConversations, loadMessages, setCurrentConversation, markAsRead]);
+
+    // Cleanup function
+    return () => {
+      if (currentConversationId === conversationId) {
+        setCurrentConversation(null);
+      }
+    };
+  }, [conversationId, token]);
 
   // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
@@ -134,23 +184,24 @@ export const ChatScreen: React.FC = () => {
     }
   }, [allMessages.length]);
 
-  // Handle message sending
+  // Handle sending messages
   const handleSendMessage = useCallback(async (content: string) => {
-    if (!user?.id || !content.trim()) return;
-
-    const clientNonce = `msg-${Date.now()}-${user.id}`;
-
     try {
-      await sendMessage(conversationId, content, clientNonce);
+      await sendMessage(conversationId, content);
     } catch (error) {
       console.error('Failed to send message:', error);
-      Alert.alert('發送失敗', '訊息發送失敗，請檢查網路連線後重試');
+      Alert.alert('發送失敗', '訊息發送失敗，請重試');
     }
-  }, [user?.id, conversationId, sendMessage]);
+  }, [conversationId, sendMessage]);
 
   // Handle message retry
-  const handleRetryMessage = useCallback((message: PendingMessage) => {
-    retryMessage(conversationId, message);
+  const handleRetryMessage = useCallback(async (clientNonce: string) => {
+    try {
+      await retryMessage(conversationId, clientNonce);
+    } catch (error) {
+      console.error('Failed to retry message:', error);
+      Alert.alert('重試失敗', '無法重新發送訊息');
+    }
   }, [conversationId, retryMessage]);
 
   // Handle pull to refresh
@@ -181,7 +232,6 @@ export const ChatScreen: React.FC = () => {
       // Send game invitation
       await sendGameInvite(conversationId, participant.id);
       Alert.alert('邀請已發送', `已向 ${participant.profile?.display_name || participant.name} 發送遊戲邀請`);
-
     } catch (error) {
       Alert.alert('錯誤', '無法發送遊戲邀請，請稍後再試');
     }
@@ -196,7 +246,6 @@ export const ChatScreen: React.FC = () => {
         { text: '取消', style: 'cancel' },
         { text: '重新整理', onPress: handleRefresh },
         { text: '開始遊戲', onPress: handleLaunchGame },
-        { text: '送禮物', onPress: () => setShowGiftManager(true) },
         {
           text: '離開對話',
           style: 'destructive',
@@ -206,30 +255,30 @@ export const ChatScreen: React.FC = () => {
               '確定要離開這個對話嗎？',
               [
                 { text: '取消', style: 'cancel' },
-                { text: '確認離開', style: 'destructive', onPress: handleBack }
+                { text: '離開', style: 'destructive', onPress: handleBack },
               ]
             );
-          }
-        }
+          },
+        },
       ]
     );
-  }, [handleRefresh, handleLaunchGame, handleBack]);
+  }, [handleRefresh, handleBack, handleLaunchGame]);
 
-  // Handle game invite acceptance
+  // Handle game invite actions
   const handleAcceptGameInvite = useCallback(async (gameSessionId: number) => {
     try {
-      await acceptGameInvitation(gameSessionId);
+      await acceptGameInvitation(gameSessionId.toString());
+      Alert.alert('邀請已接受', '遊戲即將開始！');
     } catch (error) {
       Alert.alert('錯誤', '無法接受遊戲邀請，請稍後再試');
     }
   }, [acceptGameInvitation]);
 
-  // Handle game invite decline
   const handleDeclineGameInvite = useCallback(async (gameSessionId: number) => {
     try {
-      await declineGameInvitation(gameSessionId);
+      await declineGameInvitation(gameSessionId.toString());
     } catch (error) {
-      Alert.alert('錯誤', '無法拒絕遊戲邀請，請稍後再試');
+      Alert.alert('錯誤', '無法拒絕遊戲邀請');
     }
   }, [declineGameInvitation]);
 
@@ -259,50 +308,61 @@ export const ChatScreen: React.FC = () => {
 
     const handlePress = () => {
       if ('isPending' in item && item.status === 'failed') {
-        handleRetryMessage(item);
+        Alert.alert(
+          '發送失敗',
+          '訊息發送失敗，要重新發送嗎？',
+          [
+            { text: '取消', style: 'cancel' },
+            {
+              text: '重試',
+              onPress: () => handleRetryMessage(item.client_nonce)
+            },
+          ]
+        );
       }
     };
 
     return (
-      <MessageBubble
-        message={item as Message}
-        isFromCurrentUser={isFromCurrentUser}
-        onPress={handlePress}
-        isPending={'isPending' in item}
-        isFailure={'isPending' in item && item.status === 'failed'}
-        testID={`message-${item.id || 'pending'}`}
-      />
+      <TouchableOpacity onPress={handlePress} disabled={!('isPending' in item && item.status === 'failed')}>
+        <MessageBubble
+          message={item as Message | (PendingMessage & { isPending: true })}
+          isFromCurrentUser={isFromCurrentUser}
+          testID={`message-${('id' in item ? item.id : item.client_nonce)}`}
+        />
+      </TouchableOpacity>
     );
-  }, [user?.id, handleAcceptGameInvite, handleDeclineGameInvite, handleRetryMessage]);
-
-  // Get participant info for header
-  const participant = currentConversation?.participants.find(p => p.id !== user?.id);
+  }, [user?.id, handleRetryMessage, handleAcceptGameInvite, handleDeclineGameInvite]);
 
   // Loading state
-  if (isLoadingMessages && allMessages.length === 0) {
+  if (isLoadingMessages[conversationId] && allMessages.length === 0) {
     return (
       <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#3b82f6" />
         <Text style={styles.loadingText}>載入對話中...</Text>
       </View>
     );
   }
 
   // Error state
-  if (messagesError) {
+  if (messagesError[conversationId]) {
     return (
       <View style={styles.errorContainer}>
         <Ionicons name="alert-circle" size={48} color="#ef4444" />
-        <Text style={styles.errorText}>{messagesError}</Text>
-        <TouchableOpacity style={styles.retryButton} onPress={handleRefresh}>
+        <Text style={styles.errorText}>{messagesError[conversationId]}</Text>
+        <TouchableOpacity
+          style={styles.retryButton}
+          onPress={() => loadMessages(conversationId)}
+        >
           <Text style={styles.retryButtonText}>重試</Text>
         </TouchableOpacity>
       </View>
     );
   }
 
+  // Get participant info
+  const participant = currentConversation?.participants.find(p => p.id !== user?.id);
+
   return (
-    <View style={styles.container}>
+    <View style={styles.container} testID="chat-screen">
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity
@@ -346,25 +406,25 @@ export const ChatScreen: React.FC = () => {
       </View>
 
       {/* Connection indicator */}
-      <ConnectionIndicator
-        connectionState={connectionState}
-        testID="connection-indicator"
-      />
+      <ConnectionIndicator connectionState={connectionState} />
 
       {/* Messages list */}
       <FlatList
         ref={flatListRef}
         style={styles.messagesList}
-        contentContainerStyle={allMessages.length === 0 ? styles.emptyMessages : styles.messagesContent}
         data={allMessages}
-        keyExtractor={(item) => `${item.id || 'pending'}-${item.client_nonce || ''}`}
+        keyExtractor={(item) => ('id' in item ? item.id?.toString() : item.client_nonce) || Math.random().toString()}
         renderItem={renderMessage}
+        contentContainerStyle={[
+          styles.messagesContent,
+          allMessages.length === 0 && styles.emptyMessages
+        ]}
+        testID="messages-list"
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
             onRefresh={handleRefresh}
-            colors={['#3b82f6']}
-            tintColor="#3b82f6"
+            testID="messages-refresh"
           />
         }
         ListEmptyComponent={
@@ -390,31 +450,15 @@ export const ChatScreen: React.FC = () => {
         testID="message-input"
       />
 
-      {/* 禮物管理器 - 懶加載 */}
-      {showGiftManager && (
-        <ErrorBoundary fallback={<GiftManagerFallback />}>
-          <Suspense fallback={<GiftManagerFallback />}>
-            <GiftManager
-              conversationId={conversationId}
-              receiverId={participant?.id || 0}
-              receiverName={participant?.profile?.display_name || participant?.name || '對方'}
-              onGiftSent={() => setShowGiftManager(false)}
-            />
-          </Suspense>
-        </ErrorBoundary>
-      )}
-
-      {/* Game Modal - 懶加載 */}
-      <ErrorBoundary fallback={<GameModalFallback />}>
-        <Suspense fallback={<GameModalFallback />}>
-          <GameModal
-            conversationId={conversationId}
-            opponentName={participant?.profile?.display_name || participant?.name || '對方'}
-            opponentAvatarUrl={participant?.profile?.primary_photo_url || ''}
-            testID="chat-game-modal"
-          />
-        </Suspense>
-      </ErrorBoundary>
+      {/* Game Modal */}
+      <LazyWrapper fallback={<GameModalFallback />}>
+        <GameModal
+          conversationId={conversationId}
+          opponentName={participant?.profile?.display_name || participant?.name || '對方'}
+          opponentAvatarUrl={participant?.profile?.primary_photo_url || ''}
+          testID="chat-game-modal"
+        />
+      </LazyWrapper>
     </View>
   );
 };
@@ -532,27 +576,6 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     fontSize: 16,
     fontWeight: '600',
-  },
-  // Fallback styles for lazy loading
-  modalFallback: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-  },
-  fallbackText: {
-    marginTop: 12,
-    color: '#ffffff',
-    fontSize: 16,
-  },
-  inlineFallback: {
-    padding: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
 });
 
