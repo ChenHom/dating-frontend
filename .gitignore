@@ -50,3 +50,4 @@ debug-*.png
 app-example
 .env
 .env.*
+env/*.env
