@@ -14,6 +14,10 @@ import {
   KeyboardAvoidingView,
   Platform,
   Image,
+  ActionSheetIOS,
+  Alert,
+  Modal,
+  TouchableWithoutFeedback,
 } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import dayjs from 'dayjs';
@@ -122,15 +126,25 @@ const participantInfo: { [conversationId: string]: { name: string; photoUrl?: st
   '4': { name: 'Michael Brown' },
 };
 
+const GAME_ACTION = { key: 'start-game', label: '啟動剪刀石頭布' } as const;
+
+const MORE_OPTIONS = [
+  { key: 'mute', label: '靜音此對話' },
+  { key: 'block', label: '封鎖此用戶' },
+  { key: 'report', label: '檢舉內容' },
+  { key: 'delete', label: '刪除對話', isDestructive: true },
+];
+
 export const SimpleConversationScreen: React.FC = () => {
   const { id } = useLocalSearchParams<{ id: string }>();
   const conversationId = id || '1';
-  
+
   const [messages, setMessages] = useState<MockMessage[]>(mockMessages[conversationId] || []);
   const [newMessage, setNewMessage] = useState('');
   const [isTyping, setIsTyping] = useState(false);
+  const [isOptionsVisible, setIsOptionsVisible] = useState(false);
   const flatListRef = useRef<FlatList>(null);
-  
+
   const participant = participantInfo[conversationId] || { name: 'Unknown User' };
 
   useEffect(() => {
@@ -156,9 +170,9 @@ export const SimpleConversationScreen: React.FC = () => {
 
     // Simulate message sending
     setTimeout(() => {
-      setMessages(prev => 
-        prev.map(msg => 
-          msg.id === newMsg.id 
+      setMessages(prev =>
+        prev.map(msg =>
+          msg.id === newMsg.id
             ? { ...msg, status: 'sent' }
             : msg
         )
@@ -186,6 +200,93 @@ export const SimpleConversationScreen: React.FC = () => {
     router.back();
   };
 
+  const appendMockMessage = (content: string, isFromMe: boolean) => {
+    setMessages(prev => {
+      const lastId = prev[prev.length - 1]?.id ?? 0;
+      const newMessage: MockMessage = {
+        id: lastId + 1,
+        content,
+        sentAt: new Date().toISOString(),
+        isFromMe,
+      };
+      return [...prev, newMessage];
+    });
+  };
+
+  const handleStartGame = () => {
+    setIsOptionsVisible(false);
+
+    setTimeout(() => {
+      Alert.alert(
+        '啟動遊戲 (模擬)',
+        '正式版本將在此開啟剪刀石頭布連線對戰。現在先以提示訊息取代。'
+      );
+    }, 200);
+
+    setTimeout(() => {
+      appendMockMessage('🎮 我想啟動剪刀石頭布小遊戲，準備好了嗎？', true);
+    }, 400);
+
+    setTimeout(() => {
+      setIsTyping(true);
+    }, 1000);
+
+    setTimeout(() => {
+      setIsTyping(false);
+      appendMockMessage('好耶！等正式版本上線再一起玩 🙌', false);
+    }, 2600);
+  };
+
+  const handleOptionSelect = (optionKey: string) => {
+    if (optionKey === GAME_ACTION.key) {
+      handleStartGame();
+      return;
+    }
+
+    setIsOptionsVisible(false);
+    const optionLabel = MORE_OPTIONS.find(option => option.key === optionKey)?.label || '此操作';
+    Alert.alert(
+      '功能尚未串接',
+      `${optionLabel} 目前僅作為範例，實際串接 WebSocket 後端後才會生效。`,
+      [{ text: '知道了' }],
+      { cancelable: true }
+    );
+  };
+
+  const handleMoreOptions = () => {
+    if (Platform.OS === 'ios') {
+      const optionEntries = [GAME_ACTION, ...MORE_OPTIONS];
+      const options = [...optionEntries.map(option => option.label), '取消'];
+      const destructiveButtonIndex = optionEntries.findIndex(
+        option => 'isDestructive' in option && option.isDestructive
+      );
+      ActionSheetIOS.showActionSheetWithOptions(
+        {
+          options,
+          cancelButtonIndex: options.length - 1,
+          destructiveButtonIndex: destructiveButtonIndex >= 0 ? destructiveButtonIndex : undefined,
+          title: '更多操作',
+          message: '此頁面使用模擬資料，選單僅提供體驗流程。',
+        },
+        buttonIndex => {
+          if (buttonIndex === options.length - 1) {
+            return;
+          }
+          const selected = optionEntries[buttonIndex];
+          if (selected) {
+            handleOptionSelect(selected.key);
+          }
+        }
+      );
+      return;
+    }
+    setIsOptionsVisible(true);
+  };
+
+  const handleCloseOptions = () => {
+    setIsOptionsVisible(false);
+  };
+
   const renderMessage = ({ item }: { item: MockMessage }) => {
     return (
       <View
@@ -196,13 +297,13 @@ export const SimpleConversationScreen: React.FC = () => {
         testID={`message-${item.id}`}
       >
         {!item.isFromMe && participant.photoUrl && (
-          <Image 
-            source={{ uri: participant.photoUrl }} 
+          <Image
+            source={{ uri: participant.photoUrl }}
             style={styles.messageAvatar}
             testID={`message-avatar-${item.id}`}
           />
         )}
-        
+
         <View
           style={[
             styles.messageBubble,
@@ -218,7 +319,7 @@ export const SimpleConversationScreen: React.FC = () => {
           >
             {item.content}
           </Text>
-          
+
           <Text
             style={[
               styles.messageTime,
@@ -240,11 +341,11 @@ export const SimpleConversationScreen: React.FC = () => {
 
   const renderTypingIndicator = () => {
     if (!isTyping) return null;
-    
+
     return (
       <View style={styles.typingContainer} testID="typing-indicator">
-        <Image 
-          source={{ uri: participant.photoUrl || 'https://via.placeholder.com/30x30/ccc/666?text=?' }} 
+        <Image
+          source={{ uri: participant.photoUrl || 'https://via.placeholder.com/30x30/ccc/666?text=?' }}
           style={styles.typingAvatar}
         />
         <View style={styles.typingBubble}>
@@ -254,26 +355,35 @@ export const SimpleConversationScreen: React.FC = () => {
     );
   };
 
+  const renderMockNotice = () => (
+    <View style={styles.mockNotice} testID="mock-notice">
+      <Text style={styles.mockNoticeTitle}>目前為模擬對話</Text>
+      <Text style={styles.mockNoticeBody}>
+        此頁面用於體驗流程與自動化測試，訊息會在本機排程產生並未透過 WebSocket 與後端同步。
+      </Text>
+    </View>
+  );
+
   return (
-    <KeyboardAvoidingView 
+    <KeyboardAvoidingView
       style={styles.container}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       testID="conversation-container"
     >
       {/* Header */}
       <View style={styles.header} testID="conversation-header">
-        <TouchableOpacity 
+        <TouchableOpacity
           style={styles.backButton}
           onPress={handleBack}
           testID="back-button"
         >
           <Text style={styles.backButtonText}>←</Text>
         </TouchableOpacity>
-        
+
         <View style={styles.headerInfo}>
           {participant.photoUrl && (
-            <Image 
-              source={{ uri: participant.photoUrl }} 
+            <Image
+              source={{ uri: participant.photoUrl }}
               style={styles.headerAvatar}
               testID="header-avatar"
             />
@@ -282,8 +392,12 @@ export const SimpleConversationScreen: React.FC = () => {
             {participant.name}
           </Text>
         </View>
-        
-        <TouchableOpacity style={styles.moreButton} testID="more-options-button">
+
+        <TouchableOpacity
+          style={styles.moreButton}
+          onPress={handleMoreOptions}
+          testID="more-options-button"
+        >
           <Text style={styles.moreButtonText}>⋯</Text>
         </TouchableOpacity>
       </View>
@@ -297,6 +411,7 @@ export const SimpleConversationScreen: React.FC = () => {
         renderItem={renderMessage}
         contentContainerStyle={styles.messagesContent}
         testID="messages-list"
+        ListHeaderComponent={renderMockNotice}
         ListFooterComponent={renderTypingIndicator}
       />
 
@@ -311,7 +426,7 @@ export const SimpleConversationScreen: React.FC = () => {
           maxLength={500}
           testID="message-input"
         />
-        
+
         <TouchableOpacity
           style={[
             styles.sendButton,
@@ -324,6 +439,56 @@ export const SimpleConversationScreen: React.FC = () => {
           <Text style={styles.sendButtonText}>Send</Text>
         </TouchableOpacity>
       </View>
+
+      <Modal
+        visible={isOptionsVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={handleCloseOptions}
+      >
+        <View style={styles.optionsModalOverlay}>
+          <TouchableWithoutFeedback onPress={handleCloseOptions}>
+            <View style={StyleSheet.absoluteFill} />
+          </TouchableWithoutFeedback>
+          <View style={styles.optionsModalContainer} testID="more-options-modal">
+            <View style={styles.optionsModalHandle} />
+            <Text style={styles.optionsModalTitle}>更多操作</Text>
+            <Text style={styles.optionsModalDescription}>
+              此頁面使用模擬資料，以下操作僅示範流程。
+            </Text>
+            <View style={styles.gameActionCard} testID="game-action-card">
+              <Text style={styles.gameActionTitle}>剪刀石頭布小遊戲</Text>
+              <Text style={styles.gameActionDescription}>
+                正式版本會在此開啟即時對戰。現在可以先觸發模擬流程，確認 UI 與測試腳本。
+              </Text>
+              <TouchableOpacity
+                style={styles.startGameButton}
+                onPress={handleStartGame}
+                testID="start-game-button"
+              >
+                <Text style={styles.startGameButtonText}>啟動遊戲</Text>
+              </TouchableOpacity>
+            </View>
+            {MORE_OPTIONS.map(option => (
+              <TouchableOpacity
+                key={option.key}
+                style={[styles.optionsOption, option.isDestructive && styles.optionsOptionDestructive]}
+                onPress={() => handleOptionSelect(option.key)}
+                testID={`more-option-${option.key}`}
+              >
+                <Text
+                  style={[styles.optionsOptionText, option.isDestructive && styles.optionsOptionTextDestructive]}
+                >
+                  {option.label}
+                </Text>
+              </TouchableOpacity>
+            ))}
+            <TouchableOpacity style={styles.optionsCancel} onPress={handleCloseOptions} testID="more-options-cancel">
+              <Text style={styles.optionsCancelText}>取消</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </KeyboardAvoidingView>
   );
 };
@@ -379,6 +544,26 @@ const styles = StyleSheet.create({
   },
   messagesContent: {
     paddingVertical: 16,
+  },
+  mockNotice: {
+    marginHorizontal: 16,
+    marginBottom: 12,
+    padding: 12,
+    borderRadius: 12,
+    backgroundColor: '#eff6ff',
+    borderWidth: 1,
+    borderColor: '#bfdbfe',
+  },
+  mockNoticeTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#1d4ed8',
+    marginBottom: 4,
+  },
+  mockNoticeBody: {
+    fontSize: 13,
+    color: '#1f2937',
+    lineHeight: 18,
   },
   messageContainer: {
     flexDirection: 'row',
@@ -499,6 +684,94 @@ const styles = StyleSheet.create({
   sendButtonText: {
     color: '#ffffff',
     fontSize: 16,
+    fontWeight: '600',
+  },
+  optionsModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(15, 23, 42, 0.35)',
+    justifyContent: 'flex-end',
+  },
+  optionsModalContainer: {
+    backgroundColor: '#ffffff',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    paddingHorizontal: 20,
+    paddingTop: 12,
+    paddingBottom: 32,
+  },
+  optionsModalHandle: {
+    alignSelf: 'center',
+    width: 40,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: '#d1d5db',
+    marginBottom: 12,
+  },
+  optionsModalTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#111827',
+    marginBottom: 4,
+  },
+  optionsModalDescription: {
+    fontSize: 14,
+    color: '#6b7280',
+    marginBottom: 16,
+  },
+  optionsOption: {
+    paddingVertical: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e5e7eb',
+  },
+  optionsOptionDestructive: {
+    borderBottomColor: '#fecaca',
+  },
+  optionsOptionText: {
+    fontSize: 16,
+    color: '#1f2937',
+  },
+  optionsOptionTextDestructive: {
+    color: '#b91c1c',
+  },
+  optionsCancel: {
+    marginTop: 12,
+    paddingVertical: 14,
+    borderRadius: 12,
+    backgroundColor: '#f3f4f6',
+    alignItems: 'center',
+  },
+  optionsCancelText: {
+    fontSize: 16,
+    color: '#1f2937',
+    fontWeight: '500',
+  },
+  gameActionCard: {
+    marginBottom: 12,
+    padding: 16,
+    borderRadius: 16,
+    backgroundColor: '#111827',
+  },
+  gameActionTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#f9fafb',
+    marginBottom: 6,
+  },
+  gameActionDescription: {
+    fontSize: 13,
+    lineHeight: 18,
+    color: 'rgba(226, 232, 240, 0.85)',
+    marginBottom: 14,
+  },
+  startGameButton: {
+    backgroundColor: '#3b82f6',
+    borderRadius: 10,
+    paddingVertical: 10,
+    alignItems: 'center',
+  },
+  startGameButtonText: {
+    color: '#ffffff',
+    fontSize: 15,
     fontWeight: '600',
   },
 });

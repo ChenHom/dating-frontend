@@ -4,6 +4,7 @@
  */
 
 // Mock global environment first
+// @ts-ignore - __DEV__ 是 React Native 全域旗標
 global.__DEV__ = true;
 
 // Mock Expo constants to avoid import issues
@@ -36,6 +37,21 @@ jest.mock('expo-notifications', () => ({
   getDevicePushTokenAsync: jest.fn().mockResolvedValue({ data: 'mock-token' }),
 }));
 
+jest.mock('@react-native-async-storage/async-storage', () => ({
+  __esModule: true,
+  default: {
+    setItem: jest.fn(),
+    getItem: jest.fn(),
+    removeItem: jest.fn(),
+    clear: jest.fn(),
+  },
+}), { virtual: true });
+
+jest.mock('expo', () => ({
+  __esModule: true,
+  default: {},
+}), { virtual: true });
+
 jest.mock('expo-router', () => ({
   router: {
     push: jest.fn(),
@@ -49,6 +65,21 @@ jest.mock('expo-router', () => ({
     back: jest.fn(),
   }),
 }));
+
+
+Object.defineProperty(global, '__ExpoImportMetaRegistry', {
+  configurable: true,
+  writable: true,
+  value: new Map(),
+});
+
+if (typeof window !== 'undefined') {
+  Object.defineProperty(window as typeof globalThis, '__ExpoImportMetaRegistry', {
+    configurable: true,
+    writable: true,
+    value: new Map(),
+  });
+}
 
 // Mock Zustand stores
 jest.mock('@/stores/auth', () => ({

@@ -10,7 +10,8 @@ services:
       - ./:/app
       - app_node_modules:/app/node_modules
     env_file:
-      - ./env/development.env
+      - ./.env
+      - ./.env.local
     environment:
       # 檔案監聽（容器內常需輪詢）
       CHOKIDAR_USEPOLLING: "1"
