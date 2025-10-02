@@ -1,9 +1,9 @@
 /**
- * Simple Chat List Screen for E2E Testing
- * 簡化的聊天列表頁面用於端對端測試
+ * Chat List Screen
+ * 聊天列表頁面 - 顯示所有對話
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -12,12 +12,21 @@ import {
   FlatList,
   Image,
   RefreshControl,
+  ActivityIndicator,
 } from 'react-native';
 import { router } from 'expo-router';
 import dayjs from 'dayjs';
 import relativeTime from 'dayjs/plugin/relativeTime';
 
+import { useChatStore } from '@/stores/chat';
+import { useAuthStore } from '@/stores/auth';
+import { WebSocketConnectionState } from '@/services/websocket/types';
+import type { Conversation } from '@/stores/chat';
+
 dayjs.extend(relativeTime);
+
+// 開發測試用的環境變數
+const USE_MOCK_DATA = process.env.EXPO_PUBLIC_USE_MOCK_CHAT === 'true';
 
 interface MockConversation {
   id: number;
@@ -87,40 +96,81 @@ const mockConversations: MockConversation[] = [
   }
 ];
 
-export const SimpleChatListScreen: React.FC = () => {
-  const [conversations, setConversations] = useState(mockConversations);
-  const [isRefreshing, setIsRefreshing] = useState(false);
-  const [connectionStatus, setConnectionStatus] = useState<'connected' | 'connecting' | 'disconnected'>('connected');
+export const ChatListScreen: React.FC = () => {
+  // Store hooks
+  const {
+    conversations: storeConversations,
+    isLoadingConversations,
+    conversationsError,
+    loadConversations,
+    connectionState,
+    totalUnreadCount: storeTotalUnreadCount,
+  } = useChatStore();
+  const { token } = useAuthStore();
 
-  const totalUnreadCount = conversations.reduce((sum, conv) => sum + conv.unreadCount, 0);
+  // Local state for mock data (development/testing)
+  const [mockConversationsState, setMockConversationsState] = useState(mockConversations);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
+  // 根據環境決定使用真實資料還是假資料
+  const conversations = USE_MOCK_DATA ? mockConversationsState : storeConversations;
+  const isLoading = USE_MOCK_DATA ? false : isLoadingConversations;
+  const error = USE_MOCK_DATA ? null : conversationsError;
+
+  // 計算未讀數量
+  const totalUnreadCount = USE_MOCK_DATA
+    ? mockConversationsState.reduce((sum, conv) => sum + conv.unreadCount, 0)
+    : storeTotalUnreadCount;
+
+  // 載入真實對話資料
+  useEffect(() => {
+    if (!USE_MOCK_DATA && token) {
+      loadConversations(token);
+    }
+  }, [token, loadConversations]);
 
   const handleRefresh = async () => {
     setIsRefreshing(true);
-    // Simulate refresh delay
-    setTimeout(() => {
+
+    if (USE_MOCK_DATA) {
+      // 模擬延遲
+      setTimeout(() => {
+        setIsRefreshing(false);
+      }, 1000);
+    } else if (token) {
+      // 載入真實資料
+      await loadConversations(token);
       setIsRefreshing(false);
-    }, 1000);
+    } else {
+      setIsRefreshing(false);
+    }
   };
 
-  const handleConversationPress = (conversation: MockConversation) => {
-    // Mark as read
-    setConversations(prev => 
-      prev.map(conv => 
-        conv.id === conversation.id 
-          ? { ...conv, unreadCount: 0 }
-          : conv
-      )
-    );
-    
+  const handleConversationPress = (conversation: MockConversation | any) => {
+    if (USE_MOCK_DATA) {
+      // Mock data: 更新本地狀態
+      setMockConversationsState(prev =>
+        prev.map(conv =>
+          conv.id === conversation.id
+            ? { ...conv, unreadCount: 0 }
+            : conv
+        )
+      );
+    }
+
     // Navigate to conversation
     router.push(`/chat/${conversation.id}`);
   };
 
   const getConnectionStatusColor = () => {
-    switch (connectionStatus) {
-      case 'connected':
+    if (USE_MOCK_DATA) {
+      return '#4CAF50'; // Mock data always shows connected
+    }
+    switch (connectionState) {
+      case WebSocketConnectionState.CONNECTED:
         return '#4CAF50';
-      case 'connecting':
+      case WebSocketConnectionState.CONNECTING:
+      case WebSocketConnectionState.RECONNECTING:
         return '#FF9800';
       default:
         return '#9E9E9E';
@@ -128,74 +178,107 @@ export const SimpleChatListScreen: React.FC = () => {
   };
 
   const getConnectionStatusText = () => {
-    switch (connectionStatus) {
-      case 'connected':
-        return 'Online';
-      case 'connecting':
-        return 'Connecting...';
+    if (USE_MOCK_DATA) {
+      return 'Online (Mock)';
+    }
+    switch (connectionState) {
+      case WebSocketConnectionState.CONNECTED:
+        return '已連線';
+      case WebSocketConnectionState.CONNECTING:
+        return '連線中...';
+      case WebSocketConnectionState.RECONNECTING:
+        return '重新連線中...';
       default:
-        return 'Offline';
+        return '離線';
     }
   };
 
-  const renderConversationItem = ({ item }: { item: MockConversation }) => {
+  const renderConversationItem = ({ item }: { item: MockConversation | Conversation }) => {
+    // 判斷是 Mock 資料還是真實資料
+    const isMockData = 'participant' in item;
+
+    // 統一資料格式
+    const participantName = isMockData
+      ? (item as MockConversation).participant.name
+      : (item as Conversation).participants?.[0]?.profile?.display_name || (item as Conversation).participants?.[0]?.name || 'Unknown';
+
+    const photoUrl = isMockData
+      ? (item as MockConversation).participant.photoUrl
+      : (item as Conversation).participants?.[0]?.profile?.primary_photo_url;
+
+    const unreadCount = isMockData
+      ? (item as MockConversation).unreadCount
+      : (item as Conversation).unread_count || 0;
+
+    const lastMessageContent = isMockData
+      ? (item as MockConversation).lastMessage.content
+      : (item as Conversation).last_message?.content || '';
+
+    const lastMessageTime = isMockData
+      ? (item as MockConversation).lastMessage.sentAt
+      : (item as Conversation).last_message?.created_at || (item as Conversation).updated_at;
+
+    const isFromMe = isMockData
+      ? (item as MockConversation).lastMessage.isFromMe
+      : false; // 後端資料不包含此資訊，需要根據 sender_id 判斷
+
     return (
       <TouchableOpacity
         testID={`conversation-item-${item.id}`}
         style={[
           styles.conversationItem,
-          item.unreadCount > 0 && styles.unreadConversationItem
+          unreadCount > 0 && styles.unreadConversationItem
         ]}
         onPress={() => handleConversationPress(item)}
       >
         <View style={styles.avatarContainer}>
-          {item.participant.photoUrl ? (
-            <Image 
-              source={{ uri: item.participant.photoUrl }} 
+          {photoUrl ? (
+            <Image
+              source={{ uri: photoUrl }}
               style={styles.avatar}
               testID={`avatar-${item.id}`}
             />
           ) : (
             <View style={[styles.avatar, styles.defaultAvatar]} testID={`avatar-${item.id}`}>
               <Text style={styles.defaultAvatarText}>
-                {item.participant.name.charAt(0).toUpperCase()}
+                {participantName.charAt(0).toUpperCase()}
               </Text>
             </View>
           )}
-          {item.unreadCount > 0 && (
+          {unreadCount > 0 && (
             <View style={styles.unreadBadge} testID={`unread-badge-${item.id}`}>
               <Text style={styles.unreadBadgeText}>
-                {item.unreadCount > 99 ? '99+' : item.unreadCount.toString()}
+                {unreadCount > 99 ? '99+' : unreadCount.toString()}
               </Text>
             </View>
           )}
         </View>
-        
+
         <View style={styles.conversationContent}>
           <View style={styles.conversationHeader}>
-            <Text 
+            <Text
               style={[
                 styles.participantName,
-                item.unreadCount > 0 && styles.unreadText
+                unreadCount > 0 && styles.unreadText
               ]}
               testID={`participant-name-${item.id}`}
             >
-              {item.participant.name}
+              {participantName}
             </Text>
             <Text style={styles.messageTime} testID={`message-time-${item.id}`}>
-              {dayjs(item.lastMessage.sentAt).fromNow()}
+              {dayjs(lastMessageTime).fromNow()}
             </Text>
           </View>
-          
-          <Text 
+
+          <Text
             style={[
               styles.lastMessage,
-              item.unreadCount > 0 && styles.unreadText
+              unreadCount > 0 && styles.unreadText
             ]}
             numberOfLines={1}
             testID={`last-message-${item.id}`}
           >
-            {item.lastMessage.isFromMe ? 'You: ' : ''}{item.lastMessage.content}
+            {isFromMe ? '你: ' : ''}{lastMessageContent}
           </Text>
         </View>
       </TouchableOpacity>
@@ -204,10 +287,30 @@ export const SimpleChatListScreen: React.FC = () => {
 
   const renderEmptyState = () => (
     <View style={styles.emptyState} testID="empty-chat-state">
-      <Text style={styles.emptyStateTitle}>No conversations yet</Text>
+      <Text style={styles.emptyStateTitle}>還沒有對話</Text>
       <Text style={styles.emptyStateSubtitle}>
-        Start matching with people to begin chatting!
+        開始配對來展開聊天吧！
       </Text>
+    </View>
+  );
+
+  const renderLoadingState = () => (
+    <View style={styles.emptyState} testID="loading-chat-state">
+      <ActivityIndicator size="large" color="#3b82f6" />
+      <Text style={styles.emptyStateSubtitle}>載入對話中...</Text>
+    </View>
+  );
+
+  const renderErrorState = () => (
+    <View style={styles.emptyState} testID="error-chat-state">
+      <Text style={styles.emptyStateTitle}>載入失敗</Text>
+      <Text style={styles.emptyStateSubtitle}>{error}</Text>
+      <TouchableOpacity
+        style={styles.retryButton}
+        onPress={() => token && loadConversations(token)}
+      >
+        <Text style={styles.retryButtonText}>重試</Text>
+      </TouchableOpacity>
     </View>
   );
 
@@ -215,8 +318,8 @@ export const SimpleChatListScreen: React.FC = () => {
     <View style={styles.container} testID="chat-list-container">
       {/* Header */}
       <View style={styles.header} testID="chat-header">
-        <Text style={styles.headerTitle} testID="chat-title">Chat</Text>
-        
+        <Text style={styles.headerTitle} testID="chat-title">訊息</Text>
+
         {totalUnreadCount > 0 && (
           <View style={styles.totalUnreadBadge} testID="total-unread-badge">
             <Text style={styles.totalUnreadText}>
@@ -224,14 +327,14 @@ export const SimpleChatListScreen: React.FC = () => {
             </Text>
           </View>
         )}
-        
+
         <View style={styles.connectionStatus} testID="connection-status">
-          <View 
+          <View
             style={[
-              styles.connectionIndicator, 
+              styles.connectionIndicator,
               { backgroundColor: getConnectionStatusColor() }
             ]}
-            testID="connection-indicator" 
+            testID="connection-indicator"
           />
           <Text style={styles.connectionText} testID="connection-text">
             {getConnectionStatusText()}
@@ -240,26 +343,32 @@ export const SimpleChatListScreen: React.FC = () => {
       </View>
 
       {/* Content */}
-      <FlatList
-        testID="conversations-list"
-        data={conversations}
-        keyExtractor={(item) => item.id.toString()}
-        renderItem={renderConversationItem}
-        ListEmptyComponent={renderEmptyState}
-        refreshControl={
-          <RefreshControl
-            refreshing={isRefreshing}
-            onRefresh={handleRefresh}
-            colors={['#2196F3']}
-            tintColor="#2196F3"
-            testID="refresh-control"
-          />
-        }
-        contentContainerStyle={conversations.length === 0 ? styles.emptyContainer : undefined}
-      />
+      {isLoading && conversations.length === 0 ? (
+        renderLoadingState()
+      ) : error && conversations.length === 0 ? (
+        renderErrorState()
+      ) : (
+        <FlatList
+          testID="conversations-list"
+          data={conversations}
+          keyExtractor={(item) => item.id.toString()}
+          renderItem={renderConversationItem}
+          ListEmptyComponent={renderEmptyState}
+          refreshControl={
+            <RefreshControl
+              refreshing={isRefreshing}
+              onRefresh={handleRefresh}
+              colors={['#2196F3']}
+              tintColor="#2196F3"
+              testID="refresh-control"
+            />
+          }
+          contentContainerStyle={conversations.length === 0 ? styles.emptyContainer : undefined}
+        />
+      )}
 
       {/* Settings/New Chat Button */}
-      <TouchableOpacity 
+      <TouchableOpacity
         style={styles.newChatButton}
         testID="new-chat-button"
         onPress={() => router.push('/(tabs)/discover')}
@@ -419,6 +528,19 @@ const styles = StyleSheet.create({
     color: '#9ca3af',
     textAlign: 'center',
     lineHeight: 24,
+    marginBottom: 16,
+  },
+  retryButton: {
+    backgroundColor: '#3b82f6',
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 8,
+    marginTop: 16,
+  },
+  retryButtonText: {
+    color: '#ffffff',
+    fontSize: 16,
+    fontWeight: '600',
   },
   newChatButton: {
     position: 'absolute',
@@ -442,4 +564,4 @@ const styles = StyleSheet.create({
   },
 });
 
-export default SimpleChatListScreen;
+export default ChatListScreen;

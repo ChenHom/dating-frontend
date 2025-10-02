@@ -111,12 +111,12 @@ export const ChatScreen: React.FC = () => {
 
       try {
         await initializeEcho(token);
-        await loadConversations();
-        await loadMessages(conversationId, 1);
+        await loadConversations(token);
+        await loadMessages(conversationId, 1, token);
         setCurrentConversation(conversationId);
 
         // Mark messages as read when entering chat
-        markAsRead(conversationId);
+        markAsRead(conversationId, token);
       } catch (error) {
         console.error('Failed to initialize chat:', error);
       }
@@ -136,32 +136,32 @@ export const ChatScreen: React.FC = () => {
 
   // Handle message sending
   const handleSendMessage = useCallback(async (content: string) => {
-    if (!user?.id || !content.trim()) return;
-
-    const clientNonce = `msg-${Date.now()}-${user.id}`;
+    if (!user?.id || !content.trim() || !token) return;
 
     try {
-      await sendMessage(conversationId, content, clientNonce);
+      await sendMessage(conversationId, content, token);
     } catch (error) {
       console.error('Failed to send message:', error);
       Alert.alert('發送失敗', '訊息發送失敗，請檢查網路連線後重試');
     }
-  }, [user?.id, conversationId, sendMessage]);
+  }, [user?.id, conversationId, sendMessage, token]);
 
   // Handle message retry
   const handleRetryMessage = useCallback((message: PendingMessage) => {
-    retryMessage(conversationId, message);
-  }, [conversationId, retryMessage]);
+    if (!token) return;
+    retryMessage(conversationId, message.client_nonce, token);
+  }, [conversationId, retryMessage, token]);
 
   // Handle pull to refresh
   const handleRefresh = useCallback(async () => {
+    if (!token) return;
     setRefreshing(true);
     try {
-      await loadMessages(conversationId, 1);
+      await loadMessages(conversationId, 1, token);
     } finally {
       setRefreshing(false);
     }
-  }, [conversationId, loadMessages]);
+  }, [conversationId, loadMessages, token]);
 
   // Handle back navigation
   const handleBack = useCallback(() => {

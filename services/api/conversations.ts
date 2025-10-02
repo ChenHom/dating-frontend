@@ -31,20 +31,28 @@ export async function reportConversationUser(request: ReportConversationRequest)
 
 /**
  * 刪除對話（軟刪除）
- * 注意：後端目前可能尚未實作此端點，需要確認或新增
  */
 export async function deleteConversation(conversationId: number): Promise<void> {
-  // TODO: 確認後端是否有實作 DELETE /conversations/{id} 端點
-  // 暫時拋出錯誤提示需要後端支援
-  throw new Error('刪除對話功能需要後端 API 支援：DELETE /api/conversations/{id}');
+  await apiClient['client'].delete(`/conversation/conversations/${conversationId}`);
 }
 
 /**
  * 靜音對話
- * 注意：後端目前可能尚未實作此端點，需要確認或新增
  */
 export async function muteConversation(conversationId: number): Promise<void> {
-  // TODO: 確認後端是否有實作 PUT /conversations/{id}/mute 端點
-  // 暫時拋出錯誤提示需要後端支援
-  throw new Error('靜音對話功能需要後端 API 支援：PUT /api/conversations/{id}/mute');
+  await apiClient['client'].put(`/conversation/conversations/${conversationId}/mute`);
+}
+
+/**
+ * 取消靜音對話
+ */
+export async function unmuteConversation(conversationId: number): Promise<void> {
+  await apiClient['client'].put(`/conversation/conversations/${conversationId}/unmute`);
+}
+
+/**
+ * 恢復已刪除的對話
+ */
+export async function restoreConversation(conversationId: number): Promise<void> {
+  await apiClient['client'].put(`/conversation/conversations/${conversationId}/restore`);
 }

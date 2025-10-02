@@ -146,7 +146,7 @@ export const useGiftStore = create<GiftState>()(
         });
 
         try {
-          const response = await apiClient.post(`/conversations/${conversationId}/gifts/send`, {
+          const response = await apiClient.post(`/gift/conversations/${conversationId}/gifts`, {
             receiver_id: receiverId,
             gift_id: giftId,
           });

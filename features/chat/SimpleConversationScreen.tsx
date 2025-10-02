@@ -31,6 +31,7 @@ import {
   blockConversationUser,
   reportConversationUser,
   muteConversation,
+  unmuteConversation,
   deleteConversation,
 } from '@/services/api/conversations';
 
@@ -60,14 +61,6 @@ const CONNECTION_STATE_LABEL: Record<WebSocketConnectionState, string> = {
   [WebSocketConnectionState.ERROR]: '連線錯誤',
 };
 
-const MORE_OPTIONS: ConversationOption[] = [
-  { key: 'game', label: '啟動遊戲' },
-  { key: 'mute', label: '靜音此對話' },
-  { key: 'block', label: '封鎖此用戶' },
-  { key: 'report', label: '檢舉內容' },
-  { key: 'delete', label: '刪除對話', isDestructive: true },
-];
-
 export const SimpleConversationScreen: React.FC = () => {
   const { id } = useLocalSearchParams<{ id?: string }>();
   const rawId = Array.isArray(id) ? id[0] : id;
@@ -87,7 +80,7 @@ export const SimpleConversationScreen: React.FC = () => {
     isLoadingMessages,
     messagesError,
   } = chatStore;
-  const { user } = useAuthStore();
+  const { user, token } = useAuthStore();
 
   const resolvedConversationId = useMemo(() => {
     if (rawId) {
@@ -106,28 +99,53 @@ export const SimpleConversationScreen: React.FC = () => {
 
   const { sendGameInvite, showGameModal, isCreatingGame } = useGameStore();
 
+  // 錯誤狀態處理
+  const [hasAccessError, setHasAccessError] = useState(false);
+  const [accessErrorMessage, setAccessErrorMessage] = useState<string>('');
+
   // 初始化對話
   useEffect(() => {
-    if (!resolvedConversationId) {
+    if (!resolvedConversationId || !token) {
       return;
     }
 
     setCurrentConversation(resolvedConversationId);
-    loadMessages(resolvedConversationId, 1);
+    loadMessages(resolvedConversationId, 1, token);
     subscribeToConversation(resolvedConversationId);
-    markAsRead(resolvedConversationId);
+    markAsRead(resolvedConversationId, token);
 
     return () => {
       unsubscribeFromConversation(resolvedConversationId);
     };
   }, [
     resolvedConversationId,
+    token,
     setCurrentConversation,
     loadMessages,
     subscribeToConversation,
     unsubscribeFromConversation,
     markAsRead,
   ]);
+
+  // 監聽錯誤並顯示友好提示
+  useEffect(() => {
+    if (messagesError && resolvedConversationId) {
+      const error = messagesError[resolvedConversationId];
+      if (error) {
+        // 檢查是否為權限錯誤
+        if (error.includes('403') || error.includes('Access denied') || error.includes('Forbidden')) {
+          setHasAccessError(true);
+          setAccessErrorMessage('您沒有權限查看此對話');
+        } else if (error.includes('404') || error.includes('not found')) {
+          setHasAccessError(true);
+          setAccessErrorMessage('此對話不存在或已被刪除');
+        } else {
+          setHasAccessError(true);
+          setAccessErrorMessage('載入對話時發生錯誤');
+        }
+      }
+    }
+  }, [messagesError, resolvedConversationId]);
 
   // 取得對話資訊
   const conversation = useMemo(() => {
@@ -154,6 +172,19 @@ export const SimpleConversationScreen: React.FC = () => {
 
     return participants.find(participant => participant.id !== user.id) ?? participants[0];
   }, [conversation, user]);
+
+  // 根據靜音狀態動態生成選項
+  const moreOptions = useMemo<ConversationOption[]>(() => {
+    const isMuted = conversation?.is_muted ?? false;
+
+    return [
+      { key: 'game', label: '啟動遊戲' },
+      { key: isMuted ? 'unmute' : 'mute', label: isMuted ? '取消靜音' : '靜音此對話' },
+      { key: 'block', label: '封鎖此用戶' },
+      { key: 'report', label: '檢舉內容' },
+      { key: 'delete', label: '刪除對話', isDestructive: true },
+    ];
+  }, [conversation?.is_muted]);
 
   // 合併真實訊息與待發送訊息
   const combinedMessages = useMemo<RenderableMessage[]>(() => {
@@ -215,11 +246,11 @@ export const SimpleConversationScreen: React.FC = () => {
     }
 
     const trimmed = draft.trim();
-    if (!trimmed) {
+    if (!trimmed || !token) {
       return;
     }
 
-    sendMessage(resolvedConversationId, trimmed);
+    sendMessage(resolvedConversationId, trimmed, token);
     setDraft('');
   };
 
@@ -260,7 +291,23 @@ export const SimpleConversationScreen: React.FC = () => {
             throw new Error('無效的對話 ID');
           }
           await muteConversation(resolvedConversationId);
+          // 更新本地對話狀態
+          if (conversation) {
+            conversation.is_muted = true;
+          }
           Alert.alert('成功', '已靜音此對話');
+          break;
+
+        case 'unmute':
+          if (!resolvedConversationId) {
+            throw new Error('無效的對話 ID');
+          }
+          await unmuteConversation(resolvedConversationId);
+          // 更新本地對話狀態
+          if (conversation) {
+            conversation.is_muted = false;
+          }
+          Alert.alert('成功', '已取消靜音此對話');
           break;
 
         case 'block':
@@ -395,7 +442,7 @@ export const SimpleConversationScreen: React.FC = () => {
   };
 
   const handleMoreOptions = () => {
-    const optionEntries = [...MORE_OPTIONS];
+    const optionEntries = [...moreOptions];
     const optionLabels = optionEntries.map(option => option.label);
     const destructiveIndex = optionEntries.findIndex(option => option.isDestructive);
 
@@ -500,6 +547,33 @@ export const SimpleConversationScreen: React.FC = () => {
 
   const sendDisabled = !draft.trim() || !resolvedConversationId;
 
+  // 如果有存取錯誤，顯示錯誤畫面
+  if (hasAccessError) {
+    return (
+      <View style={styles.container} testID='error-container'>
+        <View style={styles.header} testID='conversation-header'>
+          <TouchableOpacity style={styles.backButton} onPress={handleBack} testID='back-button'>
+            <Text style={styles.backButtonText}>←</Text>
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>對話</Text>
+        </View>
+
+        <View style={styles.errorContainer}>
+          <Text style={styles.errorIcon}>⚠️</Text>
+          <Text style={styles.errorTitle}>無法載入對話</Text>
+          <Text style={styles.errorMessage}>{accessErrorMessage}</Text>
+          <TouchableOpacity
+            style={styles.errorButton}
+            onPress={handleBack}
+            testID='back-to-list-button'
+          >
+            <Text style={styles.errorButtonText}>返回對話列表</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  }
+
   return (
     <KeyboardAvoidingView
       style={styles.container}
@@ -598,7 +672,7 @@ export const SimpleConversationScreen: React.FC = () => {
         <TouchableWithoutFeedback onPress={handleCloseOptions}>
           <View style={styles.optionsBackdrop}>
             <View style={styles.optionsContainer}>
-              {MORE_OPTIONS.map(option => (
+              {moreOptions.map(option => (
                 <TouchableOpacity
                   key={option.key}
                   style={styles.optionItem}
@@ -872,6 +946,50 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#1f2937',
     fontWeight: '500',
+  },
+  // 錯誤狀態樣式
+  headerTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#1f2937',
+    flex: 1,
+    textAlign: 'center',
+  },
+  errorContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 40,
+    backgroundColor: '#f8fafc',
+  },
+  errorIcon: {
+    fontSize: 64,
+    marginBottom: 16,
+  },
+  errorTitle: {
+    fontSize: 24,
+    fontWeight: '600',
+    color: '#1f2937',
+    marginBottom: 12,
+    textAlign: 'center',
+  },
+  errorMessage: {
+    fontSize: 16,
+    color: '#6b7280',
+    textAlign: 'center',
+    marginBottom: 32,
+    lineHeight: 24,
+  },
+  errorButton: {
+    backgroundColor: '#3b82f6',
+    paddingHorizontal: 32,
+    paddingVertical: 14,
+    borderRadius: 12,
+  },
+  errorButtonText: {
+    color: '#ffffff',
+    fontSize: 16,
+    fontWeight: '600',
   },
 });
 

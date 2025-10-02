@@ -45,6 +45,7 @@ export interface Conversation {
   }>;
   last_message?: Message;
   unread_count: number;
+  is_muted?: boolean; // 是否已靜音
 }
 
 export interface PendingMessage {
@@ -70,18 +71,18 @@ interface ChatState {
   connectionState: WebSocketConnectionState;
   wsManager: WebSocketManager | null;
   echoService: EchoService;
-  
+
   // Conversations
   conversations: Conversation[];
   currentConversationId: number | null;
   isLoadingConversations: boolean;
   conversationsError: string | null;
-  
+
   // Messages
   messages: { [conversationId: number]: Message[] };
   isLoadingMessages: { [conversationId: number]: boolean };
   messagesError: { [conversationId: number]: string | null };
-  
+
   // Pending messages
   pendingMessages: { [conversationId: number]: PendingMessage[] };
 
@@ -102,20 +103,20 @@ interface ChatState {
 
   // Unread counts
   totalUnreadCount: number;
-  
+
   // Actions
   initializeEcho: (authToken: string) => Promise<void>;
   connect: (wsUrl: string, authToken: string) => void;
   disconnect: () => void;
   subscribeToConversation: (conversationId: number) => void;
   unsubscribeFromConversation: (conversationId: number) => void;
-  loadConversations: () => Promise<void>;
-  loadMessages: (conversationId: number, page?: number) => Promise<void>;
+  loadConversations: (authToken: string) => Promise<void>;
+  loadMessages: (conversationId: number, page: number, authToken: string) => Promise<void>;
   setCurrentConversation: (conversationId: number | null) => void;
-  sendMessage: (conversationId: number, content: string) => Promise<void>;
-  markAsRead: (conversationId: number) => Promise<void>;
-  retryMessage: (conversationId: number, clientNonce: string) => Promise<void>;
-  
+  sendMessage: (conversationId: number, content: string, authToken: string) => Promise<void>;
+  markAsRead: (conversationId: number, authToken: string) => Promise<void>;
+  retryMessage: (conversationId: number, clientNonce: string, authToken: string) => Promise<void>;
+
   // Internal methods
   handleWebSocketMessage: (event: any) => void;
   handleGameEvent: (eventType: string, event: any) => void;
@@ -265,7 +266,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   // Connection management
   connect: (wsUrl: string, authToken: string) => {
     const { wsManager } = get();
-    
+
     if (wsManager) {
       wsManager.disconnect();
     }
@@ -307,13 +308,13 @@ export const useChatStore = create<ChatState>((set, get) => ({
   },
 
   // Conversations
-  loadConversations: async () => {
+  loadConversations: async (authToken: string) => {
     set({ isLoadingConversations: true, conversationsError: null });
 
     try {
-      const response = await fetch(`${API_BASE_URL}/conversations`, {
+      const response = await fetch(`${API_BASE_URL}/chat/conversations`, {
         headers: {
-          'Authorization': `Bearer ${process.env.EXPO_PUBLIC_AUTH_TOKEN}`,
+          'Authorization': `Bearer ${authToken}`,
           'Content-Type': 'application/json',
         },
       });
@@ -324,29 +325,29 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
       const data = await response.json();
       const conversations = data.data || [];
-      
+
       // Calculate total unread count
       const totalUnreadCount = conversations.reduce((sum: number, conv: Conversation) => {
         return sum + (conv.unread_count || 0);
       }, 0);
 
-      set({ 
+      set({
         conversations,
         totalUnreadCount,
-        isLoadingConversations: false 
+        isLoadingConversations: false
       });
     } catch (error) {
-      set({ 
+      set({
         conversationsError: error instanceof Error ? error.message : 'Failed to load conversations',
-        isLoadingConversations: false 
+        isLoadingConversations: false
       });
     }
   },
 
   // Messages
-  loadMessages: async (conversationId: number, page = 1) => {
+  loadMessages: async (conversationId: number, page: number, authToken: string) => {
     const { isLoadingMessages } = get();
-    
+
     if (isLoadingMessages[conversationId]) {
       return;
     }
@@ -357,9 +358,9 @@ export const useChatStore = create<ChatState>((set, get) => ({
     });
 
     try {
-      const response = await fetch(`${API_BASE_URL}/conversations/${conversationId}/messages?page=${page}`, {
+      const response = await fetch(`${API_BASE_URL}/chat/conversations/${conversationId}/messages?page=${page}`, {
         headers: {
-          'Authorization': `Bearer ${process.env.EXPO_PUBLIC_AUTH_TOKEN}`,
+          'Authorization': `Bearer ${authToken}`,
           'Content-Type': 'application/json',
         },
       });
@@ -370,13 +371,13 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
       const data = await response.json();
       const newMessages = data.data || [];
-      
+
       const { messages } = get();
       const existingMessages = messages[conversationId] || [];
-      
+
       // Merge messages (prepend for pagination)
-      const mergedMessages = page === 1 
-        ? newMessages 
+      const mergedMessages = page === 1
+        ? newMessages
         : [...newMessages, ...existingMessages];
 
       set({
@@ -385,9 +386,9 @@ export const useChatStore = create<ChatState>((set, get) => ({
       });
     } catch (error) {
       set({
-        messagesError: { 
-          ...get().messagesError, 
-          [conversationId]: error instanceof Error ? error.message : 'Failed to load messages' 
+        messagesError: {
+          ...get().messagesError,
+          [conversationId]: error instanceof Error ? error.message : 'Failed to load messages'
         },
         isLoadingMessages: { ...get().isLoadingMessages, [conversationId]: false }
       });
@@ -430,10 +431,10 @@ export const useChatStore = create<ChatState>((set, get) => ({
   },
 
   // Message sending
-  sendMessage: async (conversationId: number, content: string) => {
+  sendMessage: async (conversationId: number, content: string, authToken: string) => {
     const clientNonce = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     const sentAt = new Date().toISOString();
-    
+
     // Add pending message
     const pendingMessage: PendingMessage = {
       client_nonce: clientNonce,
@@ -442,7 +443,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       sent_at: sentAt,
       status: 'sending'
     };
-    
+
     get().addPendingMessage(pendingMessage);
 
     const { wsManager, echoService } = get();
@@ -475,10 +476,10 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
     // Fallback to HTTP
     try {
-      const response = await fetch(`${API_BASE_URL}/conversations/${conversationId}/messages`, {
+      const response = await fetch(`${API_BASE_URL}/chat/conversations/${conversationId}/messages`, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${process.env.EXPO_PUBLIC_AUTH_TOKEN}`,
+          'Authorization': `Bearer ${authToken}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
@@ -493,7 +494,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       }
 
       const data = await response.json();
-      
+
       // Remove pending message and add real message
       get().removePendingMessage(clientNonce);
 
@@ -513,27 +514,27 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
     } catch (error) {
       get().updatePendingMessageStatus(
-        clientNonce, 
-        'failed', 
+        clientNonce,
+        'failed',
         error instanceof Error ? error.message : 'Failed to send message'
       );
     }
   },
 
-  markAsRead: async (conversationId: number) => {
+  markAsRead: async (conversationId: number, authToken: string) => {
     try {
-      await fetch(`${API_BASE_URL}/conversations/${conversationId}/read`, {
+      await fetch(`${API_BASE_URL}/chat/conversations/${conversationId}/read`, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${process.env.EXPO_PUBLIC_AUTH_TOKEN}`,
+          'Authorization': `Bearer ${authToken}`,
           'Content-Type': 'application/json',
         },
       });
 
       // Update local state
       const { conversations } = get();
-      const updatedConversations = conversations.map(conv => 
-        conv.id === conversationId 
+      const updatedConversations = conversations.map(conv =>
+        conv.id === conversationId
           ? { ...conv, unread_count: 0 }
           : conv
       );
@@ -558,18 +559,18 @@ export const useChatStore = create<ChatState>((set, get) => ({
     }
   },
 
-  retryMessage: async (conversationId: number, clientNonce: string) => {
+  retryMessage: async (conversationId: number, clientNonce: string, authToken: string) => {
     const { pendingMessages } = get();
     const conversationPending = pendingMessages[conversationId] || [];
     const pendingMessage = conversationPending.find(msg => msg.client_nonce === clientNonce);
-    
+
     if (!pendingMessage) {
       return;
     }
 
     // Retry the message
-    await get().sendMessage(conversationId, pendingMessage.content);
-    
+    await get().sendMessage(conversationId, pendingMessage.content, authToken);
+
     // Remove the original failed message
     get().removePendingMessage(clientNonce);
   },
@@ -596,12 +597,12 @@ export const useChatStore = create<ChatState>((set, get) => ({
         const { messages, conversations } = get();
         const conversationId = event.conversation_id;
         const existingMessages = messages[conversationId] || [];
-        
+
         // Check for duplicates
-        const isDuplicate = existingMessages.some(msg => 
+        const isDuplicate = existingMessages.some(msg =>
           msg.client_nonce === event.client_nonce || msg.id === event.id
         );
-        
+
         if (!isDuplicate) {
           // Initialize message state for new incoming message
           const { messageStates } = get();
@@ -696,7 +697,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
   handleConnectionStateChange: (newState: WebSocketConnectionState) => {
     set({ connectionState: newState });
-    
+
     // Rejoin current conversation on reconnection
     if (newState === WebSocketConnectionState.CONNECTED) {
       const { currentConversationId } = get();
@@ -709,13 +710,13 @@ export const useChatStore = create<ChatState>((set, get) => ({
   // Pending message management
   updatePendingMessageStatus: (clientNonce: string, status: PendingMessage['status'], error?: string) => {
     const { pendingMessages } = get();
-    
+
     const updatedPendingMessages = { ...pendingMessages };
-    
+
     Object.keys(updatedPendingMessages).forEach(conversationId => {
       const messages = updatedPendingMessages[parseInt(conversationId)] || [];
-      const updatedMessages = messages.map(msg => 
-        msg.client_nonce === clientNonce 
+      const updatedMessages = messages.map(msg =>
+        msg.client_nonce === clientNonce
           ? { ...msg, status, error }
           : msg
       );
@@ -729,7 +730,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
     const { pendingMessages } = get();
     const conversationId = message.conversation_id;
     const existing = pendingMessages[conversationId] || [];
-    
+
     set({
       pendingMessages: {
         ...pendingMessages,
@@ -740,9 +741,9 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
   removePendingMessage: (clientNonce: string) => {
     const { pendingMessages } = get();
-    
+
     const updatedPendingMessages = { ...pendingMessages };
-    
+
     Object.keys(updatedPendingMessages).forEach(conversationId => {
       const messages = updatedPendingMessages[parseInt(conversationId)] || [];
       const filtered = messages.filter(msg => msg.client_nonce !== clientNonce);

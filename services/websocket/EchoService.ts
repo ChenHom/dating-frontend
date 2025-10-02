@@ -402,5 +402,6 @@ export const echoService = new EchoService({
   wsHost: process.env.EXPO_PUBLIC_REVERB_HOST || 'localhost',
   wsPort: parseInt(process.env.EXPO_PUBLIC_REVERB_PORT || '8090'),
   scheme: process.env.EXPO_PUBLIC_REVERB_SCHEME || 'ws',
-  authEndpoint: `${process.env.EXPO_PUBLIC_API_URL || 'http://localhost:8080'}/broadcasting/auth`,
+  // Broadcasting auth endpoint is NOT under /api prefix
+  authEndpoint: `${(process.env.EXPO_PUBLIC_API_URL || 'http://localhost:8080/api').replace(/\/api$/, '')}/broadcasting/auth`,
 });

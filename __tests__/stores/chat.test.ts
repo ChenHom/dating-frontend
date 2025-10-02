@@ -41,7 +41,7 @@ describe('Chat Store', () => {
       pendingMessages: {},
       totalUnreadCount: 0,
     });
-    
+
     // Reset mocks
     jest.clearAllMocks();
     (globalThis.fetch as jest.Mock).mockClear();
@@ -52,10 +52,10 @@ describe('Chat Store', () => {
       // Arrange
       const wsUrl = 'ws://localhost:8000/ws';
       const authToken = 'test-token';
-      
+
       // Act
       useChatStore.getState().connect(wsUrl, authToken);
-      
+
       // Assert
       const state = useChatStore.getState();
       expect(state.wsManager).toBeTruthy();
@@ -74,10 +74,10 @@ describe('Chat Store', () => {
         updateAuthToken: jest.fn(),
       };
       useChatStore.setState({ wsManager: mockManager as any });
-      
+
       // Act
       useChatStore.getState().disconnect();
-      
+
       // Assert
       expect(mockManager.disconnect).toHaveBeenCalled();
       const state = useChatStore.getState();
@@ -88,7 +88,7 @@ describe('Chat Store', () => {
     test('should handle connection state changes', () => {
       // Act
       useChatStore.getState().handleConnectionStateChange(WebSocketConnectionState.CONNECTED);
-      
+
       // Assert
       const state = useChatStore.getState();
       expect(state.connectionState).toBe(WebSocketConnectionState.CONNECTED);
@@ -117,15 +117,15 @@ describe('Chat Store', () => {
           unread_count: 1,
         },
       ];
-      
+
       (globalThis.fetch as jest.Mock).mockResolvedValue({
         ok: true,
         json: () => Promise.resolve({ data: mockConversations }),
       });
-      
+
       // Act
       await useChatStore.getState().loadConversations();
-      
+
       // Assert
       const state = useChatStore.getState();
       expect(state.conversations).toEqual(mockConversations);
@@ -142,10 +142,10 @@ describe('Chat Store', () => {
         status: 500,
         statusText: errorMessage,
       });
-      
+
       // Act
       await useChatStore.getState().loadConversations();
-      
+
       // Assert
       const state = useChatStore.getState();
       expect(state.conversationsError).toContain(errorMessage);
@@ -166,10 +166,10 @@ describe('Chat Store', () => {
         updateAuthToken: jest.fn(),
       };
       useChatStore.setState({ wsManager: mockManager as any });
-      
+
       // Act
       useChatStore.getState().setCurrentConversation(conversationId);
-      
+
       // Assert
       const state = useChatStore.getState();
       expect(state.currentConversationId).toBe(conversationId);
@@ -201,15 +201,15 @@ describe('Chat Store', () => {
           },
         },
       ];
-      
+
       (globalThis.fetch as jest.Mock).mockResolvedValue({
         ok: true,
         json: () => Promise.resolve({ data: mockMessages }),
       });
-      
+
       // Act
       await useChatStore.getState().loadMessages(conversationId);
-      
+
       // Assert
       const state = useChatStore.getState();
       expect(state.messages[conversationId]).toEqual(mockMessages);
@@ -220,7 +220,7 @@ describe('Chat Store', () => {
       // Arrange
       const conversationId = 1;
       const content = 'Hello World';
-      
+
       const mockManager = {
         connect: jest.fn(),
         disconnect: jest.fn(),
@@ -232,10 +232,10 @@ describe('Chat Store', () => {
         updateAuthToken: jest.fn(),
       };
       useChatStore.setState({ wsManager: mockManager as any });
-      
+
       // Act
       await useChatStore.getState().sendMessage(conversationId, content);
-      
+
       // Assert
       expect(mockManager.sendMessage).toHaveBeenCalledWith({
         type: 'message.send',
@@ -244,7 +244,7 @@ describe('Chat Store', () => {
         client_nonce: expect.any(String),
         sent_at: expect.any(String),
       });
-      
+
       // Check pending message was added
       const state = useChatStore.getState();
       expect(state.pendingMessages[conversationId]).toHaveLength(1);
@@ -254,7 +254,7 @@ describe('Chat Store', () => {
       // Arrange
       const conversationId = 1;
       const content = 'Hello World';
-      
+
       const mockMessage: Message = {
         id: 1,
         conversation_id: conversationId,
@@ -269,7 +269,7 @@ describe('Chat Store', () => {
           name: 'User 1',
         },
       };
-      
+
       const mockManager = {
         connect: jest.fn(),
         disconnect: jest.fn(),
@@ -281,18 +281,18 @@ describe('Chat Store', () => {
         updateAuthToken: jest.fn(),
       };
       useChatStore.setState({ wsManager: mockManager as any });
-      
+
       (globalThis.fetch as jest.Mock).mockResolvedValue({
         ok: true,
         json: () => Promise.resolve({ data: mockMessage }),
       });
-      
+
       // Act
       await useChatStore.getState().sendMessage(conversationId, content);
-      
+
       // Assert
       expect(globalThis.fetch).toHaveBeenCalledWith(
-        expect.stringContaining(`/conversations/${conversationId}/messages`),
+        expect.stringContaining(`/chat/conversations/${conversationId}/messages`),
         expect.objectContaining({
           method: 'POST',
           headers: expect.objectContaining({
@@ -301,7 +301,7 @@ describe('Chat Store', () => {
           body: expect.stringContaining(content),
         })
       );
-      
+
       const state = useChatStore.getState();
       expect(state.messages[conversationId]).toContain(mockMessage);
     });
@@ -318,7 +318,7 @@ describe('Chat Store', () => {
         sent_at: '2023-01-01T12:00:00Z',
         status: 'sending',
       });
-      
+
       // Act
       useChatStore.getState().handleWebSocketMessage({
         type: 'message.ack',
@@ -327,7 +327,7 @@ describe('Chat Store', () => {
         sequence_number: 1,
         sent_at: '2023-01-01T12:00:00Z',
       });
-      
+
       // Assert
       const state = useChatStore.getState();
       const pendingMsg = state.pendingMessages[1]?.[0];
@@ -351,7 +351,7 @@ describe('Chat Store', () => {
           name: 'Other User',
         },
       };
-      
+
       useChatStore.setState({
         conversations: [{
           id: 1,
@@ -362,14 +362,14 @@ describe('Chat Store', () => {
           unread_count: 0,
         }],
       });
-      
+
       // Act
       useChatStore.getState().handleWebSocketMessage(messageEvent);
-      
+
       // Assert
       const state = useChatStore.getState();
       const messages = state.messages[1] || [];
-      
+
       expect(messages).toHaveLength(1);
       expect(messages[0]?.content).toBe('New message!');
       expect(state.totalUnreadCount).toBe(1);
@@ -391,11 +391,11 @@ describe('Chat Store', () => {
           name: 'User 1',
         },
       };
-      
+
       useChatStore.setState({
         messages: { 1: [existingMessage] },
       });
-      
+
       const duplicateEvent = {
         type: 'message.new',
         id: 2,
@@ -411,10 +411,10 @@ describe('Chat Store', () => {
           name: 'User 1',
         },
       };
-      
+
       // Act
       useChatStore.getState().handleWebSocketMessage(duplicateEvent);
-      
+
       // Assert
       const state = useChatStore.getState();
       expect(state.messages[1]).toHaveLength(1);
@@ -432,10 +432,10 @@ describe('Chat Store', () => {
         sent_at: '2023-01-01T12:00:00Z',
         status: 'sending' as const,
       };
-      
+
       // Act
       useChatStore.getState().addPendingMessage(pendingMessage);
-      
+
       // Assert
       const state = useChatStore.getState();
       expect(state.pendingMessages[1]).toContain(pendingMessage);
@@ -451,10 +451,10 @@ describe('Chat Store', () => {
         sent_at: '2023-01-01T12:00:00Z',
         status: 'sending',
       });
-      
+
       // Act
       useChatStore.getState().updatePendingMessageStatus(clientNonce, 'sent');
-      
+
       // Assert
       const state = useChatStore.getState();
       const pendingMsg = state.pendingMessages[1]?.[0];
@@ -471,10 +471,10 @@ describe('Chat Store', () => {
         sent_at: '2023-01-01T12:00:00Z',
         status: 'sending',
       });
-      
+
       // Act
       useChatStore.getState().removePendingMessage(clientNonce);
-      
+
       // Assert
       const state = useChatStore.getState();
       expect(state.pendingMessages[1]).toHaveLength(0);
@@ -496,15 +496,15 @@ describe('Chat Store', () => {
         }],
         totalUnreadCount: 5,
       });
-      
+
       (globalThis.fetch as jest.Mock).mockResolvedValue({
         ok: true,
         json: () => Promise.resolve({}),
       });
-      
+
       // Act
       await useChatStore.getState().markAsRead(conversationId);
-      
+
       // Assert
       const state = useChatStore.getState();
       const conversation = state.conversations.find(c => c.id === conversationId);
@@ -519,7 +519,7 @@ describe('Chat Store', () => {
       const conversationId = 1;
       const clientNonce = 'failed-nonce';
       const content = 'Failed message';
-      
+
       useChatStore.getState().addPendingMessage({
         client_nonce: clientNonce,
         conversation_id: conversationId,
@@ -527,7 +527,7 @@ describe('Chat Store', () => {
         sent_at: '2023-01-01T12:00:00Z',
         status: 'failed',
       });
-      
+
       const mockManager = {
         connect: jest.fn(),
         disconnect: jest.fn(),
@@ -539,10 +539,10 @@ describe('Chat Store', () => {
         updateAuthToken: jest.fn(),
       };
       useChatStore.setState({ wsManager: mockManager as any });
-      
+
       // Act
       await useChatStore.getState().retryMessage(conversationId, clientNonce);
-      
+
       // Assert
       expect(mockManager.sendMessage).toHaveBeenCalled();
     });

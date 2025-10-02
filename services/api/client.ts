@@ -118,10 +118,10 @@ class ApiClient {
   // Feed & Matching
   async getUserFeed(): Promise<FeedUser[]> {
     const response = await this.client.get('/profile/profiles/feed');
-    
+
     // Handle backend response format: { profiles: [], pagination: {} }
     const profiles = response.data.profiles || [];
-    
+
     // Transform backend profile format to FeedUser format
     return profiles.map((profile: any) => ({
       id: profile.user_id, // Use user_id as the main ID
@@ -169,19 +169,19 @@ class ApiClient {
   }
 
   async getConversation(conversationId: number): Promise<any> {
-    const response = await this.client.get(`/conversations/${conversationId}`);
+    const response = await this.client.get(`/chat/conversations/${conversationId}`);
     return response.data.data;
   }
 
   async getMessages(conversationId: number, page = 1): Promise<any> {
-    const response = await this.client.get(`/conversations/${conversationId}/messages`, {
+    const response = await this.client.get(`/chat/conversations/${conversationId}/messages`, {
       params: { page }
     });
     return response.data;
   }
 
   async sendMessage(conversationId: number, content: string, clientNonce: string): Promise<any> {
-    const response = await this.client.post(`/conversations/${conversationId}/messages`, {
+    const response = await this.client.post(`/chat/conversations/${conversationId}/messages`, {
       content,
       client_nonce: clientNonce,
     });
