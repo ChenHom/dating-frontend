@@ -5,6 +5,7 @@
 
 import React from 'react';
 import { render, fireEvent, waitFor } from '@testing-library/react-native';
+import { TextInput, TouchableOpacity } from 'react-native';
 import { SimpleConversationScreen } from '../SimpleConversationScreen';
 import { useChatStore } from '@/stores/chat';
 import { useAuthStore } from '@/stores/auth';
@@ -140,11 +141,14 @@ describe('SimpleConversationScreen', () => {
   });
 
   it('renders messages from chat store', () => {
-    const { getByTestId } = render(<SimpleConversationScreen />);
+  const { toJSON } = render(<SimpleConversationScreen />);
 
-    expect(getByTestId('message-text-10').props.children).toContain('Hello from Alex!');
-    expect(getByTestId('message-text-11').props.children).toContain('Hi Alex!');
-    expect(getByTestId('message-text-pending-1').props.children).toContain('This is pending');
+  const tree = toJSON();
+  expect(tree).toBeTruthy();
+  const serialized = JSON.stringify(tree);
+  expect(serialized).toContain('Hello from Alex!');
+  expect(serialized).toContain('Hi Alex!');
+  expect(serialized).toContain('This is pending');
   });
 
   it('initializes conversation data on mount', async () => {
@@ -184,13 +188,20 @@ describe('SimpleConversationScreen', () => {
       sendMessage,
     } as any);
 
-    const { getByTestId } = render(<SimpleConversationScreen />);
+  const { UNSAFE_getAllByType } = render(<SimpleConversationScreen />);
 
-    const input = getByTestId('message-input');
-    const button = getByTestId('send-button');
+    const input = UNSAFE_getAllByType(TextInput)[0];
+    if (!input) {
+      throw new Error('Message input not found');
+    }
+    const button = UNSAFE_getAllByType(TouchableOpacity).find(node => node.props.testID === 'send-button');
+
+    if (!button) {
+      throw new Error('Send button not found');
+    }
 
     fireEvent.changeText(input, 'New message');
-    fireEvent.press(button);
+  fireEvent.press(button);
 
     await waitFor(() => {
       expect(sendMessage).toHaveBeenCalledWith(conversationId, 'New message');

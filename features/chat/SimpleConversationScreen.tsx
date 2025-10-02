@@ -3,7 +3,7 @@
  * 簡化的對話頁面用於端對端測試
  */
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
@@ -18,117 +18,50 @@ import {
   Alert,
   Modal,
   TouchableWithoutFeedback,
+  ActivityIndicator,
 } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import dayjs from 'dayjs';
 
-interface MockMessage {
-  id: number;
+import { useChatStore } from '@/stores/chat';
+import { useAuthStore } from '@/stores/auth';
+import { useGameStore } from '@/stores/game';
+import { WebSocketConnectionState } from '@/services/websocket/types';
+import {
+  blockConversationUser,
+  reportConversationUser,
+  muteConversation,
+  deleteConversation,
+} from '@/services/api/conversations';
+
+// 型別定義
+type RenderableMessage = {
+  key: string;
+  id: string;
   content: string;
   sentAt: string;
   isFromMe: boolean;
-  status?: 'sending' | 'sent' | 'failed';
-}
-
-const mockMessages: { [conversationId: string]: MockMessage[] } = {
-  '1': [
-    {
-      id: 1,
-      content: 'Hey! Nice to match with you 😊',
-      sentAt: '2024-01-15T10:00:00Z',
-      isFromMe: false,
-    },
-    {
-      id: 2,
-      content: 'Thanks! I loved your hiking photos',
-      sentAt: '2024-01-15T10:05:00Z',
-      isFromMe: true,
-    },
-    {
-      id: 3,
-      content: 'Thank you! Do you enjoy hiking too?',
-      sentAt: '2024-01-15T10:10:00Z',
-      isFromMe: false,
-    },
-    {
-      id: 4,
-      content: 'Yes! I go every weekend. There are some amazing trails near the city',
-      sentAt: '2024-01-15T10:15:00Z',
-      isFromMe: true,
-    },
-    {
-      id: 5,
-      content: 'How was your weekend?',
-      sentAt: '2024-01-15T14:30:00Z',
-      isFromMe: false,
-    },
-  ],
-  '2': [
-    {
-      id: 1,
-      content: 'Hi Alex! Great to connect',
-      sentAt: '2024-01-15T09:00:00Z',
-      isFromMe: true,
-    },
-    {
-      id: 2,
-      content: 'Hey there! Love your profile, especially the coffee shop photo',
-      sentAt: '2024-01-15T09:15:00Z',
-      isFromMe: false,
-    },
-    {
-      id: 3,
-      content: 'Thanks for the coffee recommendation!',
-      sentAt: '2024-01-15T12:15:00Z',
-      isFromMe: true,
-    },
-  ],
-  '3': [
-    {
-      id: 1,
-      content: 'Hello! 👋',
-      sentAt: '2024-01-14T16:00:00Z',
-      isFromMe: true,
-    },
-    {
-      id: 2,
-      content: 'Hi! Nice to meet you',
-      sentAt: '2024-01-14T16:30:00Z',
-      isFromMe: false,
-    },
-    {
-      id: 3,
-      content: 'Would love to go hiking sometime!',
-      sentAt: '2024-01-14T18:45:00Z',
-      isFromMe: false,
-    },
-  ],
-  '4': [
-    {
-      id: 1,
-      content: 'Hey Michael!',
-      sentAt: '2024-01-13T19:00:00Z',
-      isFromMe: false,
-    },
-    {
-      id: 2,
-      content: 'Nice meeting you! Looking forward to our date.',
-      sentAt: '2024-01-13T20:30:00Z',
-      isFromMe: true,
-    },
-  ],
+  status?: 'sending' | 'sent' | 'failed' | undefined;
+  avatarUrl?: string | undefined;
+  isPending: boolean;
 };
 
-const participantInfo: { [conversationId: string]: { name: string; photoUrl?: string } } = {
-  '1': { name: 'Sarah Chen', photoUrl: 'https://via.placeholder.com/40x40/e91e63/ffffff?text=S' },
-  '2': { name: 'Alex Johnson', photoUrl: 'https://via.placeholder.com/40x40/2196f3/ffffff?text=A' },
-  '3': { name: 'Emma Wilson', photoUrl: 'https://via.placeholder.com/40x40/4caf50/ffffff?text=E' },
-  '4': { name: 'Michael Brown' },
+type ConversationOption = {
+  key: string;
+  label: string;
+  isDestructive?: boolean;
 };
 
-const GAME_ACTION = { key: 'start-game', label: '啟動剪刀石頭布' } as const;
+const CONNECTION_STATE_LABEL: Record<WebSocketConnectionState, string> = {
+  [WebSocketConnectionState.CONNECTED]: '已連線',
+  [WebSocketConnectionState.CONNECTING]: '連線中',
+  [WebSocketConnectionState.DISCONNECTED]: '未連線',
+  [WebSocketConnectionState.RECONNECTING]: '重新連線',
+  [WebSocketConnectionState.ERROR]: '連線錯誤',
+};
 
-const MORE_OPTIONS = [
+const MORE_OPTIONS: ConversationOption[] = [
+  { key: 'game', label: '啟動遊戲' },
   { key: 'mute', label: '靜音此對話' },
   { key: 'block', label: '封鎖此用戶' },
   { key: 'report', label: '檢舉內容' },
@@ -136,143 +69,349 @@ const MORE_OPTIONS = [
 ];
 
 export const SimpleConversationScreen: React.FC = () => {
-  const { id } = useLocalSearchParams<{ id: string }>();
-  const conversationId = id || '1';
+  const { id } = useLocalSearchParams<{ id?: string }>();
+  const rawId = Array.isArray(id) ? id[0] : id;
 
-  const [messages, setMessages] = useState<MockMessage[]>(mockMessages[conversationId] || []);
-  const [newMessage, setNewMessage] = useState('');
-  const [isTyping, setIsTyping] = useState(false);
-  const [isOptionsVisible, setIsOptionsVisible] = useState(false);
-  const flatListRef = useRef<FlatList>(null);
+  const chatStore = useChatStore();
+  const {
+    conversations,
+    messages: messageMap,
+    pendingMessages: pendingMessageMap,
+    loadMessages,
+    setCurrentConversation,
+    subscribeToConversation,
+    unsubscribeFromConversation,
+    sendMessage,
+    markAsRead,
+    connectionState,
+    isLoadingMessages,
+    messagesError,
+  } = chatStore;
+  const { user } = useAuthStore();
 
-  const participant = participantInfo[conversationId] || { name: 'Unknown User' };
-
-  useEffect(() => {
-    // Scroll to bottom when messages change
-    if (messages.length > 0) {
-      flatListRef.current?.scrollToEnd({ animated: true });
+  const resolvedConversationId = useMemo(() => {
+    if (rawId) {
+      const parsed = Number(rawId);
+      if (!Number.isNaN(parsed)) {
+        return parsed;
+      }
     }
-  }, [messages]);
+    return conversations[0]?.id ?? null;
+  }, [rawId, conversations]);
 
-  const handleSendMessage = () => {
-    if (!newMessage.trim()) return;
+  const [draft, setDraft] = useState('');
+  const [isOptionsVisible, setIsOptionsVisible] = useState(false);
+  const [isProcessingAction, setIsProcessingAction] = useState(false);
+  const flatListRef = useRef<FlatList<RenderableMessage>>(null);
 
-    const newMsg: MockMessage = {
-      id: messages.length + 1,
-      content: newMessage.trim(),
-      sentAt: new Date().toISOString(),
-      isFromMe: true,
-      status: 'sending',
+  const { sendGameInvite, showGameModal, isCreatingGame } = useGameStore();
+
+  // 初始化對話
+  useEffect(() => {
+    if (!resolvedConversationId) {
+      return;
+    }
+
+    setCurrentConversation(resolvedConversationId);
+    loadMessages(resolvedConversationId, 1);
+    subscribeToConversation(resolvedConversationId);
+    markAsRead(resolvedConversationId);
+
+    return () => {
+      unsubscribeFromConversation(resolvedConversationId);
     };
+  }, [
+    resolvedConversationId,
+    setCurrentConversation,
+    loadMessages,
+    subscribeToConversation,
+    unsubscribeFromConversation,
+    markAsRead,
+  ]);
 
-    setMessages(prev => [...prev, newMsg]);
-    setNewMessage('');
+  // 取得對話資訊
+  const conversation = useMemo(() => {
+    if (!resolvedConversationId) {
+      return undefined;
+    }
+    return conversations.find(conv => conv.id === resolvedConversationId);
+  }, [resolvedConversationId, conversations]);
 
-    // Simulate message sending
-    setTimeout(() => {
-      setMessages(prev =>
-        prev.map(msg =>
-          msg.id === newMsg.id
-            ? { ...msg, status: 'sent' }
-            : msg
-        )
-      );
-    }, 1000);
+  // 取得對方參與者
+  const otherParticipant = useMemo(() => {
+    if (!conversation) {
+      return undefined;
+    }
 
-    // Simulate typing indicator and response
-    setTimeout(() => {
-      setIsTyping(true);
-    }, 2000);
+    const participants = conversation.participants ?? [];
+    if (!participants.length) {
+      return undefined;
+    }
 
-    setTimeout(() => {
-      setIsTyping(false);
-      const responseMsg: MockMessage = {
-        id: messages.length + 2,
-        content: 'Thanks for your message! 😊',
-        sentAt: new Date().toISOString(),
-        isFromMe: false,
-      };
-      setMessages(prev => [...prev, responseMsg]);
-    }, 4000);
-  };
+    if (!user) {
+      return participants[0];
+    }
+
+    return participants.find(participant => participant.id !== user.id) ?? participants[0];
+  }, [conversation, user]);
+
+  // 合併真實訊息與待發送訊息
+  const combinedMessages = useMemo<RenderableMessage[]>(() => {
+    if (!resolvedConversationId) {
+      return [];
+    }
+
+    const realMessages: RenderableMessage[] = (messageMap[resolvedConversationId] ?? []).map(
+      message => ({
+        key: `message-${message.id}`,
+        id: String(message.id),
+        content: message.content,
+        sentAt: message.sent_at ?? message.created_at,
+        isFromMe: user ? message.sender_id === user.id : false,
+        status: undefined,
+        avatarUrl: message.sender?.profile?.primary_photo_url,
+        isPending: false,
+      })
+    );
+
+    const pending: RenderableMessage[] = (pendingMessageMap[resolvedConversationId] ?? []).map(
+      pendingMessage => ({
+        key: `pending-${pendingMessage.client_nonce}`,
+        id: pendingMessage.client_nonce,
+        content: pendingMessage.content,
+        sentAt: pendingMessage.sent_at,
+        isFromMe: true,
+        status: pendingMessage.status,
+        avatarUrl: undefined,
+        isPending: true,
+      })
+    );
+
+    return [...realMessages, ...pending];
+  }, [resolvedConversationId, messageMap, pendingMessageMap, user]);
+
+  const messageCount = combinedMessages.length;
+
+  // 自動捲動到底部
+  useEffect(() => {
+    if (messageCount === 0) {
+      return;
+    }
+
+    const timeout = setTimeout(() => {
+      flatListRef.current?.scrollToEnd({ animated: true });
+    }, 0);
+
+    return () => clearTimeout(timeout);
+  }, [messageCount]);
 
   const handleBack = () => {
     router.back();
   };
 
-  const appendMockMessage = (content: string, isFromMe: boolean) => {
-    setMessages(prev => {
-      const lastId = prev[prev.length - 1]?.id ?? 0;
-      const newMessage: MockMessage = {
-        id: lastId + 1,
-        content,
-        sentAt: new Date().toISOString(),
-        isFromMe,
-      };
-      return [...prev, newMessage];
-    });
-  };
-
-  const handleStartGame = () => {
-    setIsOptionsVisible(false);
-
-    setTimeout(() => {
-      Alert.alert(
-        '啟動遊戲 (模擬)',
-        '正式版本將在此開啟剪刀石頭布連線對戰。現在先以提示訊息取代。'
-      );
-    }, 200);
-
-    setTimeout(() => {
-      appendMockMessage('🎮 我想啟動剪刀石頭布小遊戲，準備好了嗎？', true);
-    }, 400);
-
-    setTimeout(() => {
-      setIsTyping(true);
-    }, 1000);
-
-    setTimeout(() => {
-      setIsTyping(false);
-      appendMockMessage('好耶！等正式版本上線再一起玩 🙌', false);
-    }, 2600);
-  };
-
-  const handleOptionSelect = (optionKey: string) => {
-    if (optionKey === GAME_ACTION.key) {
-      handleStartGame();
+  const handleSend = () => {
+    if (!resolvedConversationId) {
       return;
     }
 
+    const trimmed = draft.trim();
+    if (!trimmed) {
+      return;
+    }
+
+    sendMessage(resolvedConversationId, trimmed);
+    setDraft('');
+  };
+
+  const handleStartGame = async () => {
+    if (!resolvedConversationId || !otherParticipant?.id) {
+      Alert.alert('錯誤', '無效的對話或使用者');
+      return;
+    }
+
+    try {
+      await sendGameInvite(resolvedConversationId, otherParticipant.id);
+      showGameModal();
+    } catch (error) {
+      Alert.alert(
+        '遊戲邀請失敗',
+        error instanceof Error ? error.message : '無法發送遊戲邀請，請稍後再試'
+      );
+    }
+  };
+
+  const handleOptionSelect = async (optionKey: string) => {
     setIsOptionsVisible(false);
-    const optionLabel = MORE_OPTIONS.find(option => option.key === optionKey)?.label || '此操作';
-    Alert.alert(
-      '功能尚未串接',
-      `${optionLabel} 目前僅作為範例，實際串接 WebSocket 後端後才會生效。`,
-      [{ text: '知道了' }],
-      { cancelable: true }
-    );
+
+    if (isProcessingAction) {
+      return;
+    }
+
+    try {
+      setIsProcessingAction(true);
+
+      switch (optionKey) {
+        case 'game':
+          await handleStartGame();
+          break;
+
+        case 'mute':
+          if (!resolvedConversationId) {
+            throw new Error('無效的對話 ID');
+          }
+          await muteConversation(resolvedConversationId);
+          Alert.alert('成功', '已靜音此對話');
+          break;
+
+        case 'block':
+          if (!otherParticipant?.id) {
+            throw new Error('無效的使用者 ID');
+          }
+          await blockConversationUser({ target_user_id: otherParticipant.id });
+          Alert.alert('成功', '已封鎖此使用者', [
+            {
+              text: '確定',
+              onPress: () => router.back(),
+            },
+          ]);
+          break;
+
+        case 'report':
+          if (!otherParticipant?.id) {
+            throw new Error('無效的使用者 ID');
+          }
+          Alert.alert(
+            '檢舉內容',
+            '請選擇檢舉類型',
+            [
+              {
+                text: '不當內容',
+                onPress: async () => {
+                  try {
+                    await reportConversationUser({
+                      target_user_id: otherParticipant.id,
+                      type: 'ABUSE',
+                    });
+                    Alert.alert('成功', '已提交檢舉');
+                  } catch (error) {
+                    Alert.alert('錯誤', error instanceof Error ? error.message : '檢舉失敗');
+                  }
+                },
+              },
+              {
+                text: '裸露內容',
+                onPress: async () => {
+                  try {
+                    await reportConversationUser({
+                      target_user_id: otherParticipant.id,
+                      type: 'NUDITY',
+                    });
+                    Alert.alert('成功', '已提交檢舉');
+                  } catch (error) {
+                    Alert.alert('錯誤', error instanceof Error ? error.message : '檢舉失敗');
+                  }
+                },
+              },
+              {
+                text: '垃圾訊息',
+                onPress: async () => {
+                  try {
+                    await reportConversationUser({
+                      target_user_id: otherParticipant.id,
+                      type: 'SPAM',
+                    });
+                    Alert.alert('成功', '已提交檢舉');
+                  } catch (error) {
+                    Alert.alert('錯誤', error instanceof Error ? error.message : '檢舉失敗');
+                  }
+                },
+              },
+              {
+                text: '其他',
+                onPress: async () => {
+                  try {
+                    await reportConversationUser({
+                      target_user_id: otherParticipant.id,
+                      type: 'OTHER',
+                    });
+                    Alert.alert('成功', '已提交檢舉');
+                  } catch (error) {
+                    Alert.alert('錯誤', error instanceof Error ? error.message : '檢舉失敗');
+                  }
+                },
+              },
+              { text: '取消', style: 'cancel' },
+            ],
+            { cancelable: true }
+          );
+          break;
+
+        case 'delete':
+          if (!resolvedConversationId) {
+            throw new Error('無效的對話 ID');
+          }
+          Alert.alert(
+            '確認刪除',
+            '確定要刪除此對話嗎？此操作無法復原。',
+            [
+              {
+                text: '取消',
+                style: 'cancel',
+              },
+              {
+                text: '刪除',
+                style: 'destructive',
+                onPress: async () => {
+                  try {
+                    await deleteConversation(resolvedConversationId);
+                    Alert.alert('成功', '已刪除對話', [
+                      {
+                        text: '確定',
+                        onPress: () => router.back(),
+                      },
+                    ]);
+                  } catch (error) {
+                    Alert.alert('錯誤', error instanceof Error ? error.message : '刪除失敗');
+                  }
+                },
+              },
+            ],
+            { cancelable: true }
+          );
+          break;
+
+        default:
+          Alert.alert('提示', '此功能尚未實作');
+      }
+    } catch (error) {
+      Alert.alert('錯誤', error instanceof Error ? error.message : '操作失敗，請稍後再試');
+    } finally {
+      setIsProcessingAction(false);
+    }
+  };
+
+  const handleCloseOptions = () => {
+    setIsOptionsVisible(false);
   };
 
   const handleMoreOptions = () => {
+    const optionEntries = [...MORE_OPTIONS];
+    const optionLabels = optionEntries.map(option => option.label);
+    const destructiveIndex = optionEntries.findIndex(option => option.isDestructive);
+
     if (Platform.OS === 'ios') {
-      const optionEntries = [GAME_ACTION, ...MORE_OPTIONS];
-      const options = [...optionEntries.map(option => option.label), '取消'];
-      const destructiveButtonIndex = optionEntries.findIndex(
-        option => 'isDestructive' in option && option.isDestructive
-      );
       ActionSheetIOS.showActionSheetWithOptions(
         {
-          options,
-          cancelButtonIndex: options.length - 1,
-          destructiveButtonIndex: destructiveButtonIndex >= 0 ? destructiveButtonIndex : undefined,
+          options: [...optionLabels, '取消'],
+          cancelButtonIndex: optionLabels.length,
+          destructiveButtonIndex: destructiveIndex >= 0 ? destructiveIndex : undefined,
           title: '更多操作',
-          message: '此頁面使用模擬資料，選單僅提供體驗流程。',
         },
-        buttonIndex => {
-          if (buttonIndex === options.length - 1) {
+        selectedIndex => {
+          if (selectedIndex === optionLabels.length) {
             return;
           }
-          const selected = optionEntries[buttonIndex];
+          const selected = optionEntries[selectedIndex];
           if (selected) {
             handleOptionSelect(selected.key);
           }
@@ -280,25 +419,27 @@ export const SimpleConversationScreen: React.FC = () => {
       );
       return;
     }
+
     setIsOptionsVisible(true);
   };
 
-  const handleCloseOptions = () => {
-    setIsOptionsVisible(false);
-  };
+  const renderMessage = ({ item }: { item: RenderableMessage }) => {
+    const isFromMe = item.isFromMe;
+    const displayAvatar =
+      !isFromMe && (item.avatarUrl || otherParticipant?.profile?.primary_photo_url);
+    const formattedTime = item.sentAt ? dayjs(item.sentAt).format('HH:mm') : '--:--';
 
-  const renderMessage = ({ item }: { item: MockMessage }) => {
     return (
       <View
         style={[
           styles.messageContainer,
-          item.isFromMe ? styles.myMessageContainer : styles.theirMessageContainer
+          isFromMe ? styles.myMessageContainer : styles.theirMessageContainer,
         ]}
-        testID={`message-${item.id}`}
+        testID={`message-${item.key}`}
       >
-        {!item.isFromMe && participant.photoUrl && (
+        {!isFromMe && displayAvatar && (
           <Image
-            source={{ uri: participant.photoUrl }}
+            source={{ uri: displayAvatar }}
             style={styles.messageAvatar}
             testID={`message-avatar-${item.id}`}
           />
@@ -307,13 +448,13 @@ export const SimpleConversationScreen: React.FC = () => {
         <View
           style={[
             styles.messageBubble,
-            item.isFromMe ? styles.myMessageBubble : styles.theirMessageBubble
+            isFromMe ? styles.myMessageBubble : styles.theirMessageBubble,
           ]}
         >
           <Text
             style={[
               styles.messageText,
-              item.isFromMe ? styles.myMessageText : styles.theirMessageText
+              isFromMe ? styles.myMessageText : styles.theirMessageText,
             ]}
             testID={`message-text-${item.id}`}
           >
@@ -323,14 +464,16 @@ export const SimpleConversationScreen: React.FC = () => {
           <Text
             style={[
               styles.messageTime,
-              item.isFromMe ? styles.myMessageTime : styles.theirMessageTime
+              isFromMe ? styles.myMessageTime : styles.theirMessageTime,
             ]}
             testID={`message-time-${item.id}`}
           >
-            {dayjs(item.sentAt).format('HH:mm')}
-            {item.isFromMe && item.status && (
+            {formattedTime}
+            {isFromMe && item.status && (
               <Text style={styles.messageStatus}>
-                {item.status === 'sending' ? ' ⏳' : item.status === 'sent' ? ' ✓' : ' ❌'}
+                {item.status === 'sending' && ' ⏳'}
+                {item.status === 'sent' && ' ✓'}
+                {item.status === 'failed' && ' ❌'}
               </Text>
             )}
           </Text>
@@ -339,155 +482,149 @@ export const SimpleConversationScreen: React.FC = () => {
     );
   };
 
-  const renderTypingIndicator = () => {
-    if (!isTyping) return null;
-
-    return (
-      <View style={styles.typingContainer} testID="typing-indicator">
-        <Image
-          source={{ uri: participant.photoUrl || 'https://via.placeholder.com/30x30/ccc/666?text=?' }}
-          style={styles.typingAvatar}
-        />
-        <View style={styles.typingBubble}>
-          <Text style={styles.typingText}>typing...</Text>
-        </View>
-      </View>
-    );
-  };
-
-  const renderMockNotice = () => (
-    <View style={styles.mockNotice} testID="mock-notice">
-      <Text style={styles.mockNoticeTitle}>目前為模擬對話</Text>
-      <Text style={styles.mockNoticeBody}>
-        此頁面用於體驗流程與自動化測試，訊息會在本機排程產生並未透過 WebSocket 與後端同步。
-      </Text>
+  const renderEmptyState = () => (
+    <View style={styles.emptyState} testID='empty-state'>
+      <Text style={styles.emptyStateTitle}>還沒有任何訊息</Text>
+      <Text style={styles.emptyStateBody}>發送第一則訊息開始聊天吧！</Text>
     </View>
   );
+
+  const isLoading = resolvedConversationId
+    ? Boolean(isLoadingMessages[resolvedConversationId])
+    : false;
+  const errorMessage = resolvedConversationId ? messagesError[resolvedConversationId] : null;
+
+  const participantName =
+    otherParticipant?.profile?.display_name ?? otherParticipant?.name ?? '未知使用者';
+  const participantAvatar = otherParticipant?.profile?.primary_photo_url;
+
+  const sendDisabled = !draft.trim() || !resolvedConversationId;
 
   return (
     <KeyboardAvoidingView
       style={styles.container}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      testID="conversation-container"
+      testID='conversation-container'
     >
-      {/* Header */}
-      <View style={styles.header} testID="conversation-header">
-        <TouchableOpacity
-          style={styles.backButton}
-          onPress={handleBack}
-          testID="back-button"
-        >
+      <View style={styles.header} testID='conversation-header'>
+        <TouchableOpacity style={styles.backButton} onPress={handleBack} testID='back-button'>
           <Text style={styles.backButtonText}>←</Text>
         </TouchableOpacity>
 
         <View style={styles.headerInfo}>
-          {participant.photoUrl && (
+          {participantAvatar ? (
             <Image
-              source={{ uri: participant.photoUrl }}
+              source={{ uri: participantAvatar }}
               style={styles.headerAvatar}
-              testID="header-avatar"
+              testID='header-avatar'
             />
+          ) : (
+            <View style={styles.headerAvatarPlaceholder} testID='header-avatar-placeholder'>
+              <Text style={styles.headerAvatarPlaceholderText}>{participantName.charAt(0)}</Text>
+            </View>
           )}
-          <Text style={styles.headerName} testID="participant-name">
-            {participant.name}
-          </Text>
+          <View>
+            <Text style={styles.headerName} testID='participant-name'>
+              {participantName}
+            </Text>
+            <Text
+              style={[
+                styles.connectionBadge,
+                connectionState === WebSocketConnectionState.CONNECTED &&
+                  styles.connectionBadgeConnected,
+                connectionState !== WebSocketConnectionState.CONNECTED &&
+                  styles.connectionBadgeDisconnected,
+              ]}
+              testID='connection-state'
+            >
+              {CONNECTION_STATE_LABEL[connectionState]}
+            </Text>
+          </View>
         </View>
 
         <TouchableOpacity
           style={styles.moreButton}
           onPress={handleMoreOptions}
-          testID="more-options-button"
+          testID='more-options-button'
         >
           <Text style={styles.moreButtonText}>⋯</Text>
         </TouchableOpacity>
       </View>
 
-      {/* Messages */}
+      {errorMessage && (
+        <View style={styles.errorBanner} testID='messages-error'>
+          <Text style={styles.errorBannerText}>{errorMessage}</Text>
+        </View>
+      )}
+
       <FlatList
         ref={flatListRef}
-        style={styles.messagesList}
-        data={messages}
-        keyExtractor={(item) => item.id.toString()}
+        data={combinedMessages}
         renderItem={renderMessage}
-        contentContainerStyle={styles.messagesContent}
-        testID="messages-list"
-        ListHeaderComponent={renderMockNotice}
-        ListFooterComponent={renderTypingIndicator}
+        keyExtractor={item => item.key}
+        contentContainerStyle={styles.listContent}
+        ListEmptyComponent={renderEmptyState}
+        keyboardShouldPersistTaps='handled'
+        showsVerticalScrollIndicator={false}
       />
 
-      {/* Input */}
-      <View style={styles.inputContainer} testID="message-input-container">
+      {isLoading && (
+        <View style={styles.loadingOverlay} testID='messages-loading'>
+          <ActivityIndicator size='small' color='#7c3aed' />
+        </View>
+      )}
+
+      <View style={styles.inputContainer} testID='input-container'>
         <TextInput
-          style={styles.textInput}
-          value={newMessage}
-          onChangeText={setNewMessage}
-          placeholder="Type a message..."
+          style={styles.messageInput}
+          placeholder='輸入訊息...'
+          value={draft}
+          onChangeText={setDraft}
           multiline
-          maxLength={500}
-          testID="message-input"
+          testID='message-input'
         />
 
         <TouchableOpacity
-          style={[
-            styles.sendButton,
-            newMessage.trim() ? styles.sendButtonActive : styles.sendButtonInactive
-          ]}
-          onPress={handleSendMessage}
-          disabled={!newMessage.trim()}
-          testID="send-button"
+          style={[styles.sendButton, sendDisabled && styles.sendButtonDisabled]}
+          disabled={sendDisabled}
+          onPress={handleSend}
+          testID='send-button'
         >
-          <Text style={styles.sendButtonText}>Send</Text>
+          <Text style={styles.sendButtonText}>傳送</Text>
         </TouchableOpacity>
       </View>
 
-      <Modal
-        visible={isOptionsVisible}
-        transparent
-        animationType="fade"
-        onRequestClose={handleCloseOptions}
-      >
-        <View style={styles.optionsModalOverlay}>
-          <TouchableWithoutFeedback onPress={handleCloseOptions}>
-            <View style={StyleSheet.absoluteFill} />
-          </TouchableWithoutFeedback>
-          <View style={styles.optionsModalContainer} testID="more-options-modal">
-            <View style={styles.optionsModalHandle} />
-            <Text style={styles.optionsModalTitle}>更多操作</Text>
-            <Text style={styles.optionsModalDescription}>
-              此頁面使用模擬資料，以下操作僅示範流程。
-            </Text>
-            <View style={styles.gameActionCard} testID="game-action-card">
-              <Text style={styles.gameActionTitle}>剪刀石頭布小遊戲</Text>
-              <Text style={styles.gameActionDescription}>
-                正式版本會在此開啟即時對戰。現在可以先觸發模擬流程，確認 UI 與測試腳本。
-              </Text>
+      <Modal visible={isOptionsVisible} transparent animationType='fade'>
+        <TouchableWithoutFeedback onPress={handleCloseOptions}>
+          <View style={styles.optionsBackdrop}>
+            <View style={styles.optionsContainer}>
+              {MORE_OPTIONS.map(option => (
+                <TouchableOpacity
+                  key={option.key}
+                  style={styles.optionItem}
+                  onPress={() => handleOptionSelect(option.key)}
+                  testID={`option-${option.key}`}
+                >
+                  <Text
+                    style={[
+                      styles.optionText,
+                      option.isDestructive && styles.optionTextDestructive,
+                    ]}
+                  >
+                    {option.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
               <TouchableOpacity
-                style={styles.startGameButton}
-                onPress={handleStartGame}
-                testID="start-game-button"
+                style={styles.optionCancel}
+                onPress={handleCloseOptions}
+                testID='option-cancel'
               >
-                <Text style={styles.startGameButtonText}>啟動遊戲</Text>
+                <Text style={styles.optionCancelText}>取消</Text>
               </TouchableOpacity>
             </View>
-            {MORE_OPTIONS.map(option => (
-              <TouchableOpacity
-                key={option.key}
-                style={[styles.optionsOption, option.isDestructive && styles.optionsOptionDestructive]}
-                onPress={() => handleOptionSelect(option.key)}
-                testID={`more-option-${option.key}`}
-              >
-                <Text
-                  style={[styles.optionsOptionText, option.isDestructive && styles.optionsOptionTextDestructive]}
-                >
-                  {option.label}
-                </Text>
-              </TouchableOpacity>
-            ))}
-            <TouchableOpacity style={styles.optionsCancel} onPress={handleCloseOptions} testID="more-options-cancel">
-              <Text style={styles.optionsCancelText}>取消</Text>
-            </TouchableOpacity>
           </View>
-        </View>
+        </TouchableWithoutFeedback>
       </Modal>
     </KeyboardAvoidingView>
   );
@@ -522,15 +659,39 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   headerAvatar: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     marginRight: 12,
+  },
+  headerAvatarPlaceholder: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    marginRight: 12,
+    backgroundColor: '#e5e7eb',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  headerAvatarPlaceholderText: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#6b7280',
   },
   headerName: {
     fontSize: 18,
     fontWeight: '600',
     color: '#1f2937',
+  },
+  connectionBadge: {
+    fontSize: 12,
+    marginTop: 2,
+  },
+  connectionBadgeConnected: {
+    color: '#10b981',
+  },
+  connectionBadgeDisconnected: {
+    color: '#6b7280',
   },
   moreButton: {
     padding: 8,
@@ -539,31 +700,35 @@ const styles = StyleSheet.create({
     fontSize: 20,
     color: '#6b7280',
   },
-  messagesList: {
-    flex: 1,
+  errorBanner: {
+    backgroundColor: '#fef2f2',
+    borderBottomWidth: 1,
+    borderBottomColor: '#fecaca',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
   },
-  messagesContent: {
+  errorBannerText: {
+    fontSize: 14,
+    color: '#dc2626',
+  },
+  listContent: {
     paddingVertical: 16,
   },
-  mockNotice: {
-    marginHorizontal: 16,
-    marginBottom: 12,
-    padding: 12,
-    borderRadius: 12,
-    backgroundColor: '#eff6ff',
-    borderWidth: 1,
-    borderColor: '#bfdbfe',
+  emptyState: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 48,
   },
-  mockNoticeTitle: {
-    fontSize: 14,
+  emptyStateTitle: {
+    fontSize: 18,
     fontWeight: '600',
-    color: '#1d4ed8',
-    marginBottom: 4,
+    color: '#6b7280',
+    marginBottom: 8,
   },
-  mockNoticeBody: {
-    fontSize: 13,
-    color: '#1f2937',
-    lineHeight: 18,
+  emptyStateBody: {
+    fontSize: 14,
+    color: '#9ca3af',
   },
   messageContainer: {
     flexDirection: 'row',
@@ -577,9 +742,9 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-start',
   },
   messageAvatar: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     marginRight: 8,
     marginTop: 4,
   },
@@ -626,28 +791,15 @@ const styles = StyleSheet.create({
   messageStatus: {
     fontSize: 10,
   },
-  typingContainer: {
-    flexDirection: 'row',
-    marginVertical: 8,
-    paddingHorizontal: 16,
-  },
-  typingAvatar: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
-    marginRight: 8,
-  },
-  typingBubble: {
-    backgroundColor: '#e5e7eb',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderRadius: 18,
-    borderBottomLeftRadius: 4,
-  },
-  typingText: {
-    fontSize: 14,
-    color: '#6b7280',
-    fontStyle: 'italic',
+  loadingOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.8)',
   },
   inputContainer: {
     flexDirection: 'row',
@@ -658,13 +810,13 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: '#e5e7eb',
   },
-  textInput: {
+  messageInput: {
     flex: 1,
     borderWidth: 1,
     borderColor: '#d1d5db',
     borderRadius: 20,
     paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingVertical: 10,
     fontSize: 16,
     maxHeight: 100,
     marginRight: 12,
@@ -674,11 +826,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingVertical: 12,
     borderRadius: 20,
-  },
-  sendButtonActive: {
     backgroundColor: '#3b82f6',
   },
-  sendButtonInactive: {
+  sendButtonDisabled: {
     backgroundColor: '#d1d5db',
   },
   sendButtonText: {
@@ -686,93 +836,42 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
   },
-  optionsModalOverlay: {
+  optionsBackdrop: {
     flex: 1,
-    backgroundColor: 'rgba(15, 23, 42, 0.35)',
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
     justifyContent: 'flex-end',
   },
-  optionsModalContainer: {
+  optionsContainer: {
     backgroundColor: '#ffffff',
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
-    paddingHorizontal: 20,
-    paddingTop: 12,
-    paddingBottom: 32,
+    paddingHorizontal: 16,
+    paddingTop: 20,
+    paddingBottom: 40,
   },
-  optionsModalHandle: {
-    alignSelf: 'center',
-    width: 40,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: '#d1d5db',
-    marginBottom: 12,
-  },
-  optionsModalTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#111827',
-    marginBottom: 4,
-  },
-  optionsModalDescription: {
-    fontSize: 14,
-    color: '#6b7280',
-    marginBottom: 16,
-  },
-  optionsOption: {
-    paddingVertical: 14,
+  optionItem: {
+    paddingVertical: 16,
     borderBottomWidth: 1,
     borderBottomColor: '#e5e7eb',
   },
-  optionsOptionDestructive: {
-    borderBottomColor: '#fecaca',
-  },
-  optionsOptionText: {
+  optionText: {
     fontSize: 16,
     color: '#1f2937',
   },
-  optionsOptionTextDestructive: {
-    color: '#b91c1c',
+  optionTextDestructive: {
+    color: '#dc2626',
   },
-  optionsCancel: {
+  optionCancel: {
     marginTop: 12,
-    paddingVertical: 14,
+    paddingVertical: 16,
     borderRadius: 12,
     backgroundColor: '#f3f4f6',
     alignItems: 'center',
   },
-  optionsCancelText: {
+  optionCancelText: {
     fontSize: 16,
     color: '#1f2937',
     fontWeight: '500',
-  },
-  gameActionCard: {
-    marginBottom: 12,
-    padding: 16,
-    borderRadius: 16,
-    backgroundColor: '#111827',
-  },
-  gameActionTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#f9fafb',
-    marginBottom: 6,
-  },
-  gameActionDescription: {
-    fontSize: 13,
-    lineHeight: 18,
-    color: 'rgba(226, 232, 240, 0.85)',
-    marginBottom: 14,
-  },
-  startGameButton: {
-    backgroundColor: '#3b82f6',
-    borderRadius: 10,
-    paddingVertical: 10,
-    alignItems: 'center',
-  },
-  startGameButtonText: {
-    color: '#ffffff',
-    fontSize: 15,
-    fontWeight: '600',
   },
 });
 
