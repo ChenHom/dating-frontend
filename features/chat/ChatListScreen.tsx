@@ -287,10 +287,18 @@ export const ChatListScreen: React.FC = () => {
 
   const renderEmptyState = () => (
     <View style={styles.emptyState} testID="empty-chat-state">
+      <Text style={styles.emptyStateIcon}>💬</Text>
       <Text style={styles.emptyStateTitle}>還沒有對話</Text>
       <Text style={styles.emptyStateSubtitle}>
-        開始配對來展開聊天吧！
+        與你配對成功的人會出現在這裡
       </Text>
+      <TouchableOpacity
+        style={styles.emptyStateCTA}
+        onPress={() => router.push('/(tabs)/discover')}
+        testID="go-to-discover-button"
+      >
+        <Text style={styles.emptyStateCTAText}>開始配對 ✨</Text>
+      </TouchableOpacity>
     </View>
   );
 
@@ -303,13 +311,20 @@ export const ChatListScreen: React.FC = () => {
 
   const renderErrorState = () => (
     <View style={styles.emptyState} testID="error-chat-state">
+      <Text style={styles.emptyStateIcon}>⚠️</Text>
       <Text style={styles.emptyStateTitle}>載入失敗</Text>
-      <Text style={styles.emptyStateSubtitle}>{error}</Text>
+      <Text style={styles.emptyStateSubtitle}>
+        {error || '無法載入對話列表'}
+      </Text>
+      <Text style={styles.errorHint}>
+        請檢查網路連線或稍後再試
+      </Text>
       <TouchableOpacity
         style={styles.retryButton}
         onPress={() => token && loadConversations(token)}
+        testID="retry-button"
       >
-        <Text style={styles.retryButtonText}>重試</Text>
+        <Text style={styles.retryButtonText}>重新載入</Text>
       </TouchableOpacity>
     </View>
   );
@@ -516,6 +531,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 32,
   },
+  emptyStateIcon: {
+    fontSize: 64,
+    marginBottom: 16,
+  },
   emptyStateTitle: {
     fontSize: 20,
     fontWeight: '600',
@@ -528,6 +547,28 @@ const styles = StyleSheet.create({
     color: '#9ca3af',
     textAlign: 'center',
     lineHeight: 24,
+    marginBottom: 24,
+  },
+  emptyStateCTA: {
+    backgroundColor: '#3b82f6',
+    paddingHorizontal: 32,
+    paddingVertical: 14,
+    borderRadius: 24,
+    shadowColor: '#3b82f6',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  emptyStateCTAText: {
+    color: '#ffffff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  errorHint: {
+    fontSize: 14,
+    color: '#9ca3af',
+    textAlign: 'center',
     marginBottom: 16,
   },
   retryButton: {
@@ -535,7 +576,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
     paddingVertical: 12,
     borderRadius: 8,
-    marginTop: 16,
+    marginTop: 8,
   },
   retryButtonText: {
     color: '#ffffff',

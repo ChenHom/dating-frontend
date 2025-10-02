@@ -4,7 +4,7 @@
  */
 
 import React from 'react';
-import { View, Text, StyleSheet, Image } from 'react-native';
+import { View, Text, StyleSheet, Image, TouchableOpacity } from 'react-native';
 import dayjs from 'dayjs';
 import { Message, PendingMessage, MessageStatus, useChatStore } from '@/stores/chat';
 import { MessageStatusIcon } from './MessageStatusIndicator';
@@ -22,7 +22,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
   showAvatar = true,
   testID = 'message-bubble',
 }) => {
-  const { getMessageState } = useChatStore();
+  const { getMessageState, retryMessage } = useChatStore();
 
   const isMessage = 'id' in message && message.id;
   const isPending = 'status' in message && message.status;
@@ -53,6 +53,35 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
       return messageState?.error;
     }
     return undefined;
+  };
+
+  // 獲取友善的錯誤訊息
+  const getFriendlyErrorMessage = (error: string | undefined): string => {
+    if (!error) return '';
+
+    if (error.includes('timeout') || error.includes('Timeout')) {
+      return '發送超時，請檢查網路連接';
+    }
+    if (error.includes('network') || error.includes('Network')) {
+      return '網路錯誤，請重試';
+    }
+    if (error.includes('401') || error.includes('403')) {
+      return '認證失敗，請重新登入';
+    }
+    if (error.includes('500') || error.includes('502') || error.includes('503')) {
+      return '伺服器錯誤，請稍後再試';
+    }
+    return '發送失敗，請重試';
+  };
+
+  // 處理重試
+  const handleRetry = async () => {
+    if (isPending) {
+      const pendingMsg = message as PendingMessage;
+      // 需要從 auth store 獲取 token，這裡暫時使用空字串
+      // TODO: 整合 auth store
+      await retryMessage(pendingMsg.conversation_id, pendingMsg.client_nonce, '');
+    }
   };
 
   return (
@@ -106,10 +135,21 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
           />
         </View>
 
-        {getMessageError() && (
-          <Text style={styles.errorText} testID={`${testID}-error`}>
-            {getMessageError()}
-          </Text>
+        {getMessageError() && isFromCurrentUser && (
+          <View style={styles.errorContainer}>
+            <Text style={styles.errorText} testID={`${testID}-error`}>
+              {getFriendlyErrorMessage(getMessageError())}
+            </Text>
+            {getMessageStatus() === 'failed' && (
+              <TouchableOpacity
+                style={styles.retryButton}
+                onPress={handleRetry}
+                testID={`${testID}-retry`}
+              >
+                <Text style={styles.retryButtonText}>🔄 重試</Text>
+              </TouchableOpacity>
+            )}
+          </View>
         )}
       </View>
     </View>
@@ -184,10 +224,28 @@ const styles = StyleSheet.create({
     marginLeft: 4,
     color: 'rgba(255, 255, 255, 0.8)',
   },
+  errorContainer: {
+    marginTop: 6,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
   errorText: {
+    flex: 1,
     fontSize: 12,
     color: '#ef4444',
     fontStyle: 'italic',
-    marginTop: 4,
+  },
+  retryButton: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    backgroundColor: 'rgba(239, 68, 68, 0.1)',
+    borderRadius: 4,
+    marginLeft: 8,
+  },
+  retryButtonText: {
+    fontSize: 12,
+    color: '#ef4444',
+    fontWeight: '600',
   },
 });

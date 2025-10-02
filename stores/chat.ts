@@ -71,6 +71,8 @@ interface ChatState {
   connectionState: WebSocketConnectionState;
   wsManager: WebSocketManager | null;
   echoService: EchoService;
+  isUsingHttpFallback: boolean;
+  httpPollingInterval: number | null;
 
   // Conversations
   conversations: Conversation[];
@@ -117,6 +119,11 @@ interface ChatState {
   markAsRead: (conversationId: number, authToken: string) => Promise<void>;
   retryMessage: (conversationId: number, clientNonce: string, authToken: string) => Promise<void>;
 
+  // HTTP fallback
+  startHttpPolling: (authToken: string) => void;
+  stopHttpPolling: () => void;
+  pollNewMessages: (authToken: string) => Promise<void>;
+
   // Internal methods
   handleWebSocketMessage: (event: any) => void;
   handleGameEvent: (eventType: string, event: any) => void;
@@ -155,6 +162,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
   connectionState: WebSocketConnectionState.DISCONNECTED,
   wsManager: null,
   echoService: echoService,
+  isUsingHttpFallback: false,
+  httpPollingInterval: null,
   conversations: [],
   currentConversationId: null,
   isLoadingConversations: false,
@@ -236,6 +245,42 @@ export const useChatStore = create<ChatState>((set, get) => ({
         get().handleConnectionStateChange(newState);
       });
 
+      // 重連事件監聽
+      echoService.on('reconnecting', (attempt: number, delay: number) => {
+        console.log(`Reconnecting attempt ${attempt}, delay: ${delay}ms`);
+        // 可以在這裡發出通知給使用者
+      });
+
+      echoService.on('reconnected', () => {
+        console.log('Successfully reconnected to Echo service');
+        set({ connectionState: WebSocketConnectionState.CONNECTED });
+
+        // 重新訂閱當前對話
+        const { currentConversationId } = get();
+        if (currentConversationId) {
+          get().subscribeToConversation(currentConversationId);
+        }
+      });
+
+      echoService.on('reconnect_failed', () => {
+        console.error('All reconnection attempts failed');
+        set({
+          connectionState: WebSocketConnectionState.ERROR,
+          isUsingHttpFallback: true
+        });
+        // 啟動 HTTP 輪詢作為最後手段
+        get().startHttpPolling(authToken);
+      });
+
+      echoService.on('state_synced', () => {
+        console.log('State synced after reconnection');
+        // 重新加載最新訊息
+        const { currentConversationId } = get();
+        if (currentConversationId) {
+          get().loadMessages(currentConversationId, 1, authToken);
+        }
+      });
+
       await echoService.initialize(authToken);
 
       // 初始化聊天通知整合器
@@ -245,6 +290,19 @@ export const useChatStore = create<ChatState>((set, get) => ({
         console.error('Failed to initialize chat notification integrator:', error);
         // 不拋出錯誤，允許聊天功能繼續工作
       }
+
+      // 檢測是否需要啟用 HTTP 輪詢
+      const checkConnection = () => {
+        const isConnected = echoService.isConnected();
+        if (!isConnected) {
+          console.log('WebSocket not connected, starting HTTP polling');
+          set({ isUsingHttpFallback: true });
+          get().startHttpPolling(authToken);
+        }
+      };
+
+      // 給 Echo 一些時間連線，然後檢測
+      setTimeout(checkConnection, 2000);
 
     } catch (error) {
       console.error('Failed to initialize Echo service:', error);
@@ -295,6 +353,9 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
   disconnect: () => {
     const { wsManager, echoService } = get();
+
+    // Stop HTTP polling
+    get().stopHttpPolling();
 
     if (wsManager) {
       wsManager.disconnect();
@@ -700,9 +761,22 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
     // Rejoin current conversation on reconnection
     if (newState === WebSocketConnectionState.CONNECTED) {
+      // Stop HTTP polling if WebSocket reconnected
+      get().stopHttpPolling();
+      set({ isUsingHttpFallback: false });
+
       const { currentConversationId } = get();
       if (currentConversationId) {
         get().setCurrentConversation(currentConversationId);
+      }
+    } else if (newState === WebSocketConnectionState.DISCONNECTED || newState === WebSocketConnectionState.ERROR) {
+      // Start HTTP polling as fallback
+      const { echoService } = get();
+      const token = this.authToken; // TODO: Get from auth store
+      if (token && !get().isUsingHttpFallback) {
+        console.log('WebSocket disconnected, starting HTTP polling');
+        set({ isUsingHttpFallback: true });
+        get().startHttpPolling(token);
       }
     }
   },
@@ -1147,5 +1221,106 @@ export const useChatStore = create<ChatState>((set, get) => ({
         [messageId]: [...reactions],
       },
     });
+  },
+
+  // HTTP fallback methods
+  startHttpPolling: (authToken: string) => {
+    const { httpPollingInterval } = get();
+
+    // 如果已經在輪詢中，不重複啟動
+    if (httpPollingInterval) {
+      return;
+    }
+
+    const pollingIntervalMs = parseInt(
+      process.env.EXPO_PUBLIC_HTTP_POLLING_INTERVAL || '10000'
+    );
+
+    console.log(`Starting HTTP polling every ${pollingIntervalMs}ms`);
+
+    // 立即執行一次
+    get().pollNewMessages(authToken);
+
+    // 設定定時輪詢
+    const intervalId = setInterval(() => {
+      get().pollNewMessages(authToken);
+    }, pollingIntervalMs) as unknown as number;
+
+    set({ httpPollingInterval: intervalId });
+  },
+
+  stopHttpPolling: () => {
+    const { httpPollingInterval } = get();
+
+    if (httpPollingInterval) {
+      console.log('Stopping HTTP polling');
+      clearInterval(httpPollingInterval);
+      set({ httpPollingInterval: null, isUsingHttpFallback: false });
+    }
+  },
+
+  pollNewMessages: async (authToken: string) => {
+    const { currentConversationId, messages } = get();
+
+    if (!currentConversationId) {
+      return;
+    }
+
+    try {
+      // 獲取當前對話的最後一條訊息 ID
+      const conversationMessages = messages[currentConversationId] || [];
+      const lastMessageId = conversationMessages.length > 0
+        ? conversationMessages[conversationMessages.length - 1].id
+        : 0;
+
+      // 輪詢新訊息
+      const response = await fetch(
+        `${API_BASE_URL}/chat/conversations/${currentConversationId}/messages?since=${lastMessageId}`,
+        {
+          headers: {
+            'Authorization': `Bearer ${authToken}`,
+            'Content-Type': 'application/json',
+          },
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      const newMessages = data.data || [];
+
+      if (newMessages.length > 0) {
+        console.log(`Polled ${newMessages.length} new messages`);
+
+        // 添加新訊息
+        const updatedMessages = [...conversationMessages, ...newMessages];
+
+        set({
+          messages: {
+            ...messages,
+            [currentConversationId]: updatedMessages,
+          },
+        });
+
+        // 更新對話列表中的最後一條訊息
+        const { conversations } = get();
+        const updatedConversations = conversations.map(conv => {
+          if (conv.id === currentConversationId && newMessages.length > 0) {
+            return {
+              ...conv,
+              last_message: newMessages[newMessages.length - 1],
+            };
+          }
+          return conv;
+        });
+
+        set({ conversations: updatedConversations });
+      }
+    } catch (error) {
+      console.error('Error polling new messages:', error);
+      // 不拋出錯誤，繼續輪詢
+    }
   },
 }));
