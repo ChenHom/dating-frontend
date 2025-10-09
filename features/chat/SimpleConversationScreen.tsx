@@ -223,7 +223,7 @@ export const SimpleConversationScreen: React.FC = () => {
 
   const messageCount = combinedMessages.length;
 
-  // 自動捲動到底部
+  // 自動捲動到底部 - 當訊息數量變化時
   useEffect(() => {
     if (messageCount === 0) {
       return;
@@ -231,7 +231,7 @@ export const SimpleConversationScreen: React.FC = () => {
 
     const timeout = setTimeout(() => {
       flatListRef.current?.scrollToEnd({ animated: true });
-    }, 0);
+    }, 100);
 
     return () => clearTimeout(timeout);
   }, [messageCount]);
@@ -546,6 +546,18 @@ export const SimpleConversationScreen: React.FC = () => {
   const participantAvatar = otherParticipant?.profile?.primary_photo_url;
 
   const sendDisabled = !draft.trim() || !resolvedConversationId;
+
+  // 頁面載入完成後滾動到底部
+  useEffect(() => {
+    // 只在載入完成且有訊息時執行
+    if (!isLoading && messageCount > 0 && resolvedConversationId) {
+      const timeout = setTimeout(() => {
+        flatListRef.current?.scrollToEnd({ animated: false });
+      }, 300);
+
+      return () => clearTimeout(timeout);
+    }
+  }, [isLoading, messageCount, resolvedConversationId]);
 
   // 如果有存取錯誤，顯示錯誤畫面
   if (hasAccessError) {
