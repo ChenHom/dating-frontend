@@ -81,17 +81,6 @@ export class EchoService {
   async initialize(authToken: string): Promise<void> {
     this.authToken = authToken;
 
-    // Always initialize WebSocket Manager as fallback
-    try {
-      this.wsManager = new WebSocketManager(
-        `${this.config.scheme}://${this.config.wsHost}:${this.config.wsPort}/app/app-key`,
-        authToken
-      );
-      console.log('WebSocket Manager initialized as fallback');
-    } catch (error) {
-      console.error('Failed to initialize WebSocket Manager:', error);
-    }
-
     // Try to initialize Echo with timeout
     try {
       await this.initializeEchoWithTimeout(authToken);
@@ -101,7 +90,7 @@ export class EchoService {
 
       this.startHealthCheck();
     } catch (error) {
-      console.warn('Echo initialization failed, falling back to WebSocket Manager:', error);
+      console.warn('Echo initialization failed, will retry:', error);
       this.isEchoAvailable = false;
 
       this.scheduleReconnect();
@@ -339,36 +328,11 @@ export class EchoService {
 
   /**
    * 發送訊息
+   * 注意：Reverb/Pusher WebSocket 只用於接收訊息，不用於發送
+   * 訊息發送應該透過 HTTP API
    */
   sendMessage(conversationId: number, content: string, clientNonce: string): boolean {
-    const messageData = {
-      type: 'message.send',
-      conversation_id: conversationId,
-      content,
-      client_nonce: clientNonce,
-      sent_at: new Date().toISOString(),
-    };
-
-    // Try Echo first if available and connected
-    if (this.isEchoAvailable && this.echo?.connector.pusher.connection.state === 'connected') {
-      try {
-        // Echo doesn't have a direct send method, so we use WebSocket Manager
-        // This is actually the correct pattern - Echo is for receiving, WS Manager for sending
-        if (this.wsManager?.isConnected()) {
-          return this.wsManager.sendMessage(messageData);
-        }
-      } catch (error) {
-        console.error('Failed to send via Echo connection:', error);
-      }
-    }
-
-    // Fallback to WebSocket Manager
-    if (this.wsManager?.isConnected()) {
-      console.log('Sending message via WebSocket Manager');
-      return this.wsManager.sendMessage(messageData);
-    }
-
-    console.warn('No connection available for sending message');
+    console.warn('WebSocket is for receiving messages only. Please use HTTP API to send messages.');
     return false;
   }
 

@@ -507,35 +507,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
     get().addPendingMessage(pendingMessage);
 
-    const { wsManager, echoService } = get();
-
-    // Try Echo service first
-    if (echoService.isConnected()) {
-      const success = echoService.sendMessage(conversationId, content, clientNonce);
-
-      if (success) {
-        get().updatePendingMessageStatus(clientNonce, 'sending');
-        return;
-      }
-    }
-
-    // Try WebSocket fallback
-    if (wsManager && wsManager.isConnected()) {
-      const success = wsManager.sendMessage({
-        type: 'message.send',
-        conversation_id: conversationId,
-        content,
-        client_nonce: clientNonce,
-        sent_at: sentAt,
-      });
-
-      if (success) {
-        get().updatePendingMessageStatus(clientNonce, 'sending');
-        return;
-      }
-    }
-
-    // Fallback to HTTP
+    // Send message via HTTP API
+    // WebSocket (Reverb/Pusher) is only for receiving messages, not sending
     try {
       const response = await fetch(`${API_BASE_URL}/chat/conversations/${conversationId}/messages`, {
         method: 'POST',

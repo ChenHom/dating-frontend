@@ -3,7 +3,7 @@
  * 訊息輸入組件
  */
 
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   View,
   TextInput,
@@ -31,6 +31,7 @@ export const MessageInput: React.FC<MessageInputProps> = ({
   testID = 'message-input',
 }) => {
   const [message, setMessage] = useState('');
+  const inputRef = useRef<TextInput>(null);
 
   const handleSend = () => {
     if (!message.trim() || disabled) return;
@@ -41,6 +42,38 @@ export const MessageInput: React.FC<MessageInputProps> = ({
 
   const canSend = message.trim().length > 0 && !disabled;
 
+  // 在 Web 平台添加 Enter 鍵監聽
+  useEffect(() => {
+    if (Platform.OS !== 'web') return undefined;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Enter' && !e.shiftKey && !e.ctrlKey && !e.metaKey) {
+        e.preventDefault();
+        handleSend();
+      }
+    };
+
+    // 使用 setTimeout 確保 DOM 元素已渲染
+    const timer = setTimeout(() => {
+      const input = (inputRef.current as any);
+      // 在 React Native Web 中，TextInput 會被轉換為 textarea
+      const textarea = input?._node || input;
+
+      if (textarea && textarea.addEventListener) {
+        textarea.addEventListener('keydown', handleKeyDown);
+      }
+    }, 100);
+
+    return () => {
+      clearTimeout(timer);
+      const input = (inputRef.current as any);
+      const textarea = input?._node || input;
+      if (textarea && textarea.removeEventListener) {
+        textarea.removeEventListener('keydown', handleKeyDown);
+      }
+    };
+  }, [message, disabled]);
+
   return (
     <KeyboardAvoidingView
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -49,6 +82,7 @@ export const MessageInput: React.FC<MessageInputProps> = ({
       <View style={styles.container} testID={testID}>
         <View style={styles.inputContainer}>
           <TextInput
+            ref={inputRef}
             style={[
               styles.textInput,
               disabled && styles.textInputDisabled

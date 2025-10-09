@@ -117,6 +117,11 @@ export const ChatScreen: React.FC = () => {
 
         // Mark messages as read when entering chat
         markAsRead(conversationId, token);
+
+        // Scroll to bottom after initial load
+        setTimeout(() => {
+          flatListRef.current?.scrollToEnd({ animated: false });
+        }, 300);
       } catch (error) {
         console.error('Failed to initialize chat:', error);
       }
@@ -128,11 +133,14 @@ export const ChatScreen: React.FC = () => {
   // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
     if (allMessages.length > 0) {
-      setTimeout(() => {
+      // 使用短延遲確保 FlatList 已渲染
+      const timer = setTimeout(() => {
         flatListRef.current?.scrollToEnd({ animated: true });
-      }, 100);
+      }, 150);
+      return () => clearTimeout(timer);
     }
-  }, [allMessages.length]);
+    return undefined;
+  }, [allMessages]);
 
   // Handle message sending
   const handleSendMessage = useCallback(async (content: string) => {
@@ -165,8 +173,8 @@ export const ChatScreen: React.FC = () => {
 
   // Handle back navigation
   const handleBack = useCallback(() => {
-    router.back();
-  }, []);
+    router.push('/(tabs)/chat');
+  }, [])
 
   // Handle game launch (send invite)
   const handleLaunchGame = useCallback(async () => {
@@ -253,11 +261,10 @@ export const ChatScreen: React.FC = () => {
     }
 
     // Handle regular messages and pending messages
-    const isFromCurrentUser = 'sender_id' in item
-      ? item.sender_id === user?.id
-      : true; // Pending messages are always from current user
-
-    const handlePress = () => {
+    // Check isPending first, as pending messages are always from current user
+    const isFromCurrentUser = 'isPending' in item && item.isPending
+      ? true
+      : ('sender_id' in item ? item.sender_id === user?.id : false);    const handlePress = () => {
       if ('isPending' in item && item.status === 'failed') {
         handleRetryMessage(item);
       }

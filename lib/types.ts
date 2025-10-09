@@ -6,11 +6,12 @@
 // User Related Types
 export interface User {
   id: number;
-  name: string;
+  name?: string; // Optional, some APIs don't return this
   email: string;
   email_verified_at?: string;
   created_at: string;
-  updated_at: string;
+  updated_at?: string;
+  status?: string;
   profile?: Profile;
 }
 
